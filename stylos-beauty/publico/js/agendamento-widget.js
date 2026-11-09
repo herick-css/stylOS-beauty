@@ -300,6 +300,8 @@
       const campoAceite = el('input', { id: 'ag-aceite', name: 'consentimento', type: 'checkbox', required: true });
       const armadilha = el('input', { name: 'site', tabindex: '-1', autocomplete: 'off', 'aria-hidden': 'true', classe: 'campo-armadilha' });
       const botaoEnviar = el('button', { classe: 'botao botao--primario botao--largo', type: 'submit' }, [Icones.criar('whatsapp', 20), 'Pedir horário']);
+      // "Não sou um robô" (só na página publicada; na prévia não há envio de verdade)
+      const verificador = !previa && raiz.AntiRoboStylOS ? raiz.AntiRoboStylOS.criar() : null;
       const mensagemErro = el('p', { classe: 'agenda-widget__erro', role: 'alert', hidden: true });
 
       const formulario = el('form', {
@@ -326,6 +328,7 @@
           botaoEnviar.disabled = true;
           botaoEnviar.classList.add('carregando');
           try {
+            const antiRobo = verificador ? await verificador.obterSolucao() : undefined;
             estado.resultado = await chamarApi(`/api/publico/paginas/${encodeURIComponent(contexto.slug)}/agendamentos`, {
               method: 'POST',
               body: JSON.stringify({
@@ -336,10 +339,12 @@
                 observacoes: campoObs.value,
                 consentimento: campoAceite.checked,
                 site: armadilha.value,
+                antiRobo,
               }),
             });
             irPara(4);
           } catch (erro) {
+            if (verificador) verificador.renovar(); // cada verificação vale uma vez
             botaoEnviar.disabled = false;
             botaoEnviar.classList.remove('carregando');
             mensagemErro.textContent = erro.message;
@@ -359,10 +364,12 @@
           campoAceite,
           el('label', { for: 'ag-aceite', texto: 'Concordo que meu nome e telefone sejam usados apenas para este agendamento (LGPD).' }),
         ]),
+        verificador ? verificador.elemento : null,
         mensagemErro,
         botaoEnviar,
         el('p', { classe: 'agenda-widget__nota', texto: 'Nenhum pagamento é feito aqui. Depois de pedir, você envia a confirmação pelo WhatsApp.' }),
       ]);
+      if (verificador) verificador.observar(formulario);
       return [botaoVoltar(2, 'Trocar horário'), tituloEtapa('Seus dados'), resumo, formulario];
     }
 

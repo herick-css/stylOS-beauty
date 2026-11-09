@@ -24,6 +24,7 @@
     usuario: null,
     urlPublica: '',
     totalPendentes: 0,
+    loginGoogle: false,
   };
 
   const TELAS = [
@@ -110,6 +111,23 @@
     window.scrollTo(0, 0);
   }
 
+  /**
+   * Sem endereço público, o link das páginas sai como http://localhost:3000/...
+   * — que SÓ funciona neste computador. Avisamos em destaque.
+   */
+  function avisoLinkLocal() {
+    if (estado.urlPublica) return null;
+    return el('div', { classe: 'alerta alerta--aviso', role: 'status' }, [
+      icone('alerta', 18),
+      el('div', {}, [
+        el('strong', { texto: 'Os links das páginas ainda só funcionam neste computador. ' }),
+        ehDono()
+          ? el('span', {}, ['Ligue o Tailscale Funnel (o sistema detecta sozinho) ou informe o endereço público em ', el('a', { href: '#sistema', texto: 'Sistema e segurança' }), '.'])
+          : el('span', { texto: 'Avise o dono do sistema para ligar o Tailscale Funnel.' }),
+      ]),
+    ]);
+  }
+
   function cabecalhoTela(titulo, descricao, acoes) {
     return el('div', { classe: 'cabecalho-tela' }, [
       el('div', {}, [el('h1', { texto: titulo }), descricao ? el('p', { texto: descricao }) : null]),
@@ -153,6 +171,7 @@
     const listaProximos = proximos.agendamentos.slice(0, 4);
     trocar(principal, 
       cabecalhoTela(`Olá, ${estado.usuario.nome.split(' ')[0]}!`, 'Este é o seu StylOS. Daqui você cuida da página e da agenda do salão.'),
+      avisoLinkLocal(), estado.urlPublica ? null : el('p'),
       el('div', { classe: 'grade-2' }, [
         el('section', { classe: 'cartao cartao--destaque', id: 'cartao-primeiros-passos' }, [
           el('div', { classe: 'cartao__titulo' }, [icone('foguete', 20), el('h2', { texto: 'Primeiros passos' })]),
@@ -210,6 +229,7 @@
       cabecalhoTela('Minhas páginas', 'Cada página publicada ganha um link próprio para divulgar (Instagram, WhatsApp, site do Canva...).', [
         el('button', { classe: 'botao botao--primario', type: 'button', id: 'botao-nova-pagina', aoClick: novaPagina }, [icone('mais', 18), 'Nova página']),
       ]),
+      avisoLinkLocal(), estado.urlPublica ? null : el('p'),
       el('div', { classe: 'grade-cartoes' }, [...cartoes, el('button', { classe: 'cartao-novo', type: 'button', aoClick: novaPagina }, [icone('mais', 34), 'Criar nova página'])]),
     );
   }
@@ -649,13 +669,43 @@
             },
           }, ['Salvar']),
         ]),
-        cartao('Trocar senha', 'cadeado', formularioTrocaSenha(() => avisar('Senha alterada. Outras sessões abertas foram encerradas.'))),
+        cartao(estado.usuario.temSenha ? 'Trocar senha' : 'Criar uma senha', 'cadeado', [
+          estado.usuario.temSenha ? null : el('p', { classe: 'texto-suave', texto: 'Sua conta entra pelo Google. Se quiser, crie também uma senha.' }),
+          ...formularioTrocaSenha(() => {
+            estado.usuario.temSenha = true;
+            avisar('Senha salva. Outras sessões abertas foram encerradas.');
+            navegar();
+          }, { semSenhaAtual: !estado.usuario.temSenha }),
+        ]),
       ]),
+      estado.loginGoogle || estado.usuario.googleVinculado ? el('p') : null,
+      estado.loginGoogle || estado.usuario.googleVinculado ? cartao('Entrar com Google', 'google', estado.usuario.googleVinculado
+        ? [
+            el('p', {}, [el('span', { classe: 'indicador', texto: 'Vinculada' }), ' — você pode entrar com um clique pela sua conta Google.']),
+            el('button', {
+              classe: 'botao botao--secundario botao--pequeno', type: 'button',
+              aoClick: async () => {
+                if (!(await confirmar('Desvincular o Google? Depois disso você entra só com e-mail e senha.'))) return;
+                try {
+                  await api('/api/conta/google/desvincular', { corpo: {} });
+                  estado.usuario.googleVinculado = false;
+                  avisar('Google desvinculado.');
+                  navegar();
+                } catch (erro) { avisar(erro.message, 'erro', 6000); }
+              },
+            }, ['Desvincular']),
+          ]
+        : [
+            el('p', { classe: 'texto-suave', texto: 'Vincule sua conta Google para entrar com um clique, sem digitar senha. (Por segurança, contas de ADM e dono só vinculam por aqui, já logadas.)' }),
+            el('a', { classe: 'botao botao--secundario', href: `/auth/google?modo=vincular&voltar=${encodeURIComponent('/painel#conta')}` }, [icone('google', 18), 'Vincular conta Google']),
+          ]) : null,
     );
   }
 
-  function formularioTrocaSenha(aoConcluir) {
+  /** Formulário de senha. semSenhaAtual: conta criada pelo Google, que ainda não tem senha. */
+  function formularioTrocaSenha(aoConcluir, { semSenhaAtual = false } = {}) {
     const atual = campo({ id: 'senha-atual', rotulo: 'Senha atual', tipo: 'password', atributos: { autocomplete: 'current-password' } });
+    if (semSenhaAtual) atual.elemento.hidden = true;
     const nova = campo({ id: 'senha-nova', rotulo: 'Nova senha', tipo: 'password', dica: 'Pelo menos 8 caracteres, com letras e números.', atributos: { autocomplete: 'new-password' } });
     nova.elemento.insertBefore(medidorSenha(nova.entrada), nova.elemento.lastChild);
     const repetir = campo({ id: 'senha-repetir', rotulo: 'Repita a nova senha', tipo: 'password', atributos: { autocomplete: 'new-password' } });
@@ -801,11 +851,14 @@
   }
 
   async function telaGoogle() {
-    const dados = await api('/api/dono/google');
+    const [dados, login] = await Promise.all([api('/api/dono/google'), api('/api/dono/google-login')]);
     const caixaJson = campo({ id: 'json-google', rotulo: 'Cole aqui o conteúdo do arquivo JSON da chave', tipo: 'textarea', atributos: { rows: '6', spellcheck: 'false', placeholder: '{ "type": "service_account", ... }' } });
     const areaMensagem = el('div');
     trocar(principal, 
-      cabecalhoTela('Integração Google', 'Configure UMA vez. Depois cada ADM só compartilha a própria agenda com o e-mail da integração.'),
+      cabecalhoTela('Integração Google', 'Duas coisas diferentes: 1) ler a agenda dos ADMs; 2) deixar as pessoas entrarem com a conta Google.'),
+      cartaoLoginGoogle(login),
+      el('p'),
+      el('h2', { texto: 'Agenda dos ADMs (horários ocupados)' }),
       dados.configurado
         ? cartao('Integração ativa', 'check', [
             el('p', { texto: 'Os ADMs devem compartilhar a agenda com este e-mail (permissão "ver apenas livre/ocupado"):' }),
@@ -854,9 +907,173 @@
     );
   }
 
+  /** Cartão "Entrar com Google" (OAuth). */
+  function cartaoLoginGoogle(login) {
+    const clientId = campo({ id: 'google-client-id', rotulo: 'ID do cliente', valor: login.clientId, atributos: { placeholder: '123456-abc.apps.googleusercontent.com', spellcheck: 'false', autocomplete: 'off' } });
+    const segredo = campo({ id: 'google-client-secret', rotulo: 'Chave secreta do cliente', tipo: 'password', dica: login.configurado ? 'Já existe uma chave salva. Cole de novo só se for trocar.' : 'Começa com "GOCSPX-".', atributos: { autocomplete: 'off' } });
+    const areaMensagem = el('div');
+    const urlLocal = login.urlRetorno.startsWith('http://');
+    return cartao('Entrar com Google', 'google', [
+      login.configurado
+        ? el('p', {}, [el('span', { classe: 'indicador', texto: 'Ativo' }), ' — o botão "Entrar com Google" já aparece no login e no cadastro.'])
+        : el('p', { classe: 'texto-suave', texto: 'Deixa clientes (e ADMs que vincularem) entrarem com um clique. O Google não exige verificação porque só pedimos nome e e-mail.' }),
+      urlLocal ? alerta('Configure primeiro o endereço público (Tailscale): o Google só aceita endereços https para login fora deste computador.', 'aviso') : null,
+      el('details', { open: login.configurado ? null : true }, [
+        el('summary', { classe: 'campo__rotulo', texto: 'Como configurar (uns 10 minutos)' }),
+        el('ol', { classe: 'passos-guia' }, [
+          el('li', { texto: 'Em console.cloud.google.com, use o mesmo projeto da agenda (ou crie um).' }),
+          el('li', { texto: '"APIs e serviços" → "Tela de permissão OAuth" (ou "Google Auth Platform"): tipo Externo, nome "StylOS Beauty", seu e-mail de suporte. Em Público-alvo, clique em "Publicar aplicativo" (em produção).' }),
+          el('li', { texto: '"Credenciais" → "Criar credenciais" → "ID do cliente OAuth" → tipo "Aplicativo da Web".' }),
+          el('li', {}, ['Em "URIs de redirecionamento autorizados", adicione EXATAMENTE:', blocoCopiavel(login.urlRetorno)]),
+          el('li', { texto: 'Clique em Criar e copie o "ID do cliente" e a "Chave secreta do cliente" para os campos abaixo.' }),
+        ]),
+      ]),
+      el('p'),
+      clientId.elemento, segredo.elemento, areaMensagem,
+      el('div', { classe: 'cabecalho-tela__acoes' }, [
+        el('button', {
+          classe: 'botao botao--primario', type: 'button',
+          aoClick: async (evento) => {
+            trocar(areaMensagem);
+            const botao = evento.currentTarget;
+            botao.classList.add('carregando');
+            try {
+              if (login.configurado && !segredo.entrada.value) throw new Error('Cole a chave secreta para salvar de novo.');
+              await api('/api/dono/google-login', { metodo: 'PUT', corpo: { clientId: clientId.entrada.value, clientSecret: segredo.entrada.value } });
+              avisar('Login com Google ativado!');
+              navegar();
+            } catch (erro) {
+              botao.classList.remove('carregando');
+              areaMensagem.append(alerta(erro.message));
+            }
+          },
+        }, ['Salvar']),
+        login.configurado ? el('button', {
+          classe: 'botao botao--perigo', type: 'button',
+          aoClick: async () => {
+            if (!(await confirmar('Desligar o "Entrar com Google"? Quem só entra pelo Google vai precisar usar "Esqueci minha senha".', { perigo: true, botao: 'Desligar' }))) return;
+            await api('/api/dono/google-login', { metodo: 'DELETE' });
+            navegar();
+          },
+        }, ['Desligar']) : null,
+      ]),
+    ], { id: 'cartao-login-google' });
+  }
+
+  /** Cartão do Tailscale: mostra se o endereço público foi detectado. */
+  function cartaoTailscale(sistema) {
+    const ts = sistema.tailscale;
+    const ok = ts.funnelAtivo && ts.apontaParaPorta;
+    const resultado = el('div', { 'aria-live': 'polite' });
+    return cartao('Publicação na internet (Tailscale)', 'link', [
+      el('p', {}, [el('span', { classe: `indicador ${ok ? '' : 'indicador--alerta'}`, texto: ok ? 'No ar' : 'Fora do ar' }), ' ', ts.url ? el('code', { texto: ts.url }) : null]),
+      alerta(ts.dica, ok ? 'sucesso' : 'aviso'),
+      el('p'),
+      sistema.urlPublicaManual ? el('p', { classe: 'texto-pequeno texto-suave', texto: `Atenção: o endereço digitado abaixo (${sistema.urlPublicaManual}) tem prioridade sobre o detectado. Apague-o para usar o do Tailscale.` }) : null,
+      resultado,
+      el('button', {
+        classe: 'botao botao--secundario botao--pequeno', type: 'button',
+        aoClick: async (evento) => {
+          evento.currentTarget.classList.add('carregando');
+          const resposta = await api('/api/dono/tailscale/verificar', { corpo: {} }).catch((erro) => ({ erro }));
+          if (!resposta.erro) estado.urlPublica = resposta.urlPublica;
+          navegar();
+        },
+      }, [icone('link', 16), 'Verificar de novo']),
+    ], { id: 'cartao-tailscale' });
+  }
+
+  /** Cartão do e-mail (recuperação de senha). */
+  function cartaoEmail(config) {
+    const servidor = campo({ id: 'smtp-servidor', rotulo: 'Servidor', valor: config.servidor });
+    const porta = campo({ id: 'smtp-porta', rotulo: 'Porta', tipo: 'number', valor: String(config.porta) });
+    const usuario = campo({ id: 'smtp-usuario', rotulo: 'Gmail que envia', tipo: 'email', valor: config.usuario, atributos: { placeholder: 'stylos.salao@gmail.com' } });
+    const senha = campo({ id: 'smtp-senha', rotulo: 'Senha de app (16 letras)', tipo: 'password', dica: config.configurado ? 'Já existe uma salva. Preencha só para trocar.' : 'NÃO é a senha normal do Gmail.', atributos: { autocomplete: 'off' } });
+    const remetente = campo({ id: 'smtp-nome', rotulo: 'Nome do remetente', valor: config.nomeRemetente });
+    const areaMensagem = el('div', { 'aria-live': 'polite' });
+    return cartao('E-mail (recuperação de senha)', 'cadeado', [
+      config.configurado
+        ? el('p', {}, [el('span', { classe: 'indicador', texto: 'Ativo' }), ' — "Esqueci minha senha" envia o link por e-mail.'])
+        : el('p', { classe: 'texto-suave', texto: 'Ative para o "Esqueci minha senha" funcionar sozinho.' }),
+      el('details', {}, [
+        el('summary', { classe: 'campo__rotulo', texto: 'Como pegar a senha de app do Gmail' }),
+        el('ol', { classe: 'passos-guia' }, [
+          el('li', { texto: 'Crie (ou use) um Gmail só para o sistema, ex.: stylos.salao@gmail.com.' }),
+          el('li', { texto: 'Em myaccount.google.com → Segurança, ative a "Verificação em duas etapas".' }),
+          el('li', { texto: 'Procure por "Senhas de app", crie uma chamada "StylOS" e copie as 16 letras.' }),
+          el('li', { texto: 'Cole abaixo e clique em "Salvar" e depois em "Enviar teste".' }),
+        ]),
+      ]),
+      el('div', { classe: 'linha-campos' }, [servidor.elemento, porta.elemento]),
+      usuario.elemento, senha.elemento, remetente.elemento, areaMensagem,
+      el('div', { classe: 'cabecalho-tela__acoes' }, [
+        el('button', {
+          classe: 'botao botao--primario', type: 'button',
+          aoClick: async () => {
+            trocar(areaMensagem);
+            try {
+              await api('/api/dono/email', { metodo: 'PUT', corpo: { servidor: servidor.entrada.value, porta: Number(porta.entrada.value), usuario: usuario.entrada.value, senha: senha.entrada.value, nomeRemetente: remetente.entrada.value } });
+              avisar('E-mail salvo. Agora envie um teste.');
+              config.configurado = true;
+              senha.entrada.value = '';
+            } catch (erro) { areaMensagem.append(alerta(erro.message)); }
+          },
+        }, ['Salvar']),
+        el('button', {
+          classe: 'botao botao--secundario', type: 'button',
+          aoClick: async (evento) => {
+            trocar(areaMensagem);
+            const botao = evento.currentTarget;
+            botao.classList.add('carregando');
+            try {
+              const resposta = await api('/api/dono/email/teste', { corpo: {} });
+              areaMensagem.append(alerta(resposta.mensagem, resposta.ok ? 'sucesso' : 'erro'));
+            } catch (erro) { areaMensagem.append(alerta(erro.message)); }
+            botao.classList.remove('carregando');
+          },
+        }, [icone('enviar', 16), 'Enviar teste']),
+      ]),
+    ], { id: 'cartao-email' });
+  }
+
+  /** Cartão do escudo anti-DDoS. */
+  function cartaoEscudo(escudo) {
+    const modos = [[null, 'Automático'], ['ligado', 'Defesa ligada'], ['desligado', 'Defesa desligada']];
+    return cartao('Escudo contra ataques', 'escudo', [
+      el('p', {}, [
+        el('span', { classe: `indicador ${escudo.modoDefesa ? 'indicador--alerta' : ''}`, texto: escudo.modoDefesa ? 'MODO DE DEFESA' : 'Normal' }),
+        escudo.modoDefesa ? ' — limites reduzidos e "Não sou um robô" mais difícil.' : ' — nenhum ataque detectado agora.',
+      ]),
+      el('div', { classe: 'numeros-escudo' }, [
+        ['Pedidos/minuto', escudo.pedidosPorMinuto], ['Em andamento', escudo.pedidosEmAndamento],
+        ['IPs bloqueados agora', escudo.ipsBloqueados], ['Recusados (total)', escudo.totalRecusados],
+      ].map(([rotulo, valor]) => el('div', {}, [el('strong', { texto: String(valor) }), el('span', { texto: rotulo })]))),
+      el('div', { classe: 'escolhas', role: 'group', 'aria-label': 'Modo de defesa' }, modos.map(([valor, texto]) => el('button', {
+        classe: 'escolha', type: 'button', 'aria-pressed': String(escudo.modoManual === valor), texto,
+        aoClick: async () => { await api('/api/dono/escudo', { metodo: 'PUT', corpo: { modo: valor } }); navegar(); },
+      }))),
+      el('p'),
+      el('div', { classe: 'cabecalho-tela__acoes' }, [
+        el('button', {
+          classe: 'botao botao--secundario botao--pequeno', type: 'button',
+          aoClick: async () => {
+            if (!(await confirmar('Liberar todos os endereços bloqueados agora?'))) return;
+            await api('/api/dono/escudo/desbloquear', { corpo: {} });
+            avisar('Bloqueios removidos.');
+            navegar();
+          },
+        }, ['Desbloquear todos']),
+      ]),
+      el('p', { classe: 'texto-pequeno texto-suave', texto: 'O escudo barra abusos de quem ataca este sistema diretamente. Um DDoS grande (milhões de acessos) não é contido por nenhum notebook: veja o PLANEJAMENTO.md.' }),
+    ], { id: 'cartao-escudo' });
+  }
+
   async function telaSistema() {
-    const [sistema, todas, auditoria] = await Promise.all([api('/api/dono/sistema'), api('/api/dono/paginas'), api('/api/dono/auditoria')]);
-    const url = campo({ id: 'url-publica', rotulo: 'Endereço público do sistema', valor: sistema.urlPublica, tipo: 'url', dica: 'O endereço do túnel (Tailscale/Cloudflare). Usado nos links das páginas. Ex.: https://salao.tail1234.ts.net', atributos: { placeholder: 'https://...' } });
+    const [sistema, todas, auditoria, configEmail, escudo] = await Promise.all([
+      api('/api/dono/sistema'), api('/api/dono/paginas'), api('/api/dono/auditoria'), api('/api/dono/email'), api('/api/dono/escudo'),
+    ]);
+    estado.urlPublica = sistema.urlPublica;
+    const url = campo({ id: 'url-publica', rotulo: 'Endereço público (opcional)', valor: sistema.urlPublicaManual, tipo: 'url', dica: 'Deixe EM BRANCO para usar o endereço detectado pelo Tailscale. Preencha só se usar outro túnel (ex.: Cloudflare com domínio próprio).', atributos: { placeholder: sistema.tailscale.url || 'https://...' } });
     const areaUrl = el('div');
     const emailCliente = campo({ id: 'email-cliente', rotulo: 'E-mail da cliente', tipo: 'email' });
     const areaCliente = el('div');
@@ -868,8 +1085,12 @@
     };
     trocar(principal, 
       cabecalhoTela('Sistema e segurança', `${sistema.totais.adms} ADM(s) · ${sistema.totais.clientes} cliente(s) · ${sistema.totais.paginasPublicadas} página(s) no ar · ${sistema.totais.agendamentos} agendamento(s)`),
+      el('div', { classe: 'grade-2' }, [cartaoTailscale(sistema), cartaoEscudo(escudo)]),
+      el('p'),
+      cartaoEmail(configEmail),
+      el('p'),
       el('div', { classe: 'grade-2' }, [
-        cartao('Endereço público', 'link', [
+        cartao('Endereço público manual', 'link', [
           url.elemento, areaUrl,
           el('button', {
             classe: 'botao botao--primario', type: 'button',
@@ -978,7 +1199,16 @@
     if (sessao.usuario.papel === 'usuario') { location.href = '/minha-conta'; return; }
     estado.usuario = sessao.usuario;
     estado.urlPublica = sessao.urlPublica;
+    estado.loginGoogle = Boolean(sessao.loginGoogle);
     window.addEventListener('hashchange', navegar);
+
+    // Voltou do Google depois de "Vincular conta Google"?
+    const retornoGoogle = new URLSearchParams(location.search).get('google');
+    if (retornoGoogle) {
+      if (retornoGoogle === 'vinculado') { avisar('Conta Google vinculada!'); estado.usuario.googleVinculado = true; }
+      if (retornoGoogle === 'em-uso') avisar('Essa conta Google já está ligada a outro usuário do StylOS.', 'erro', 7000);
+      history.replaceState(null, '', location.pathname + location.hash);
+    }
 
     if (estado.usuario.deveTrocarSenha) {
       desenharLateral();

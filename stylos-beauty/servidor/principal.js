@@ -19,12 +19,18 @@ const { abrirBanco, fecharBanco } = require('./banco');
 const seguranca = require('./seguranca');
 const { ErroHttp, responderJson, servirArquivo, Roteador } = require('./utilitarios');
 const { agendarManutencao } = require('./servicos/manutencao');
+const escudo = require('./servicos/escudo');
+const antiRobo = require('./servicos/anti-robo');
+const { registrarAuditoria } = require('./banco');
 
 const rotasAutenticacao = require('./rotas/autenticacao');
 const rotasDono = require('./rotas/dono');
 const rotasPaginas = require('./rotas/paginas');
 const rotasAgenda = require('./rotas/agenda');
 const rotasArquivos = require('./rotas/arquivos');
+const rotasProtecao = require('./rotas/protecao');
+const rotasGoogleLogin = require('./rotas/google-login');
+const rotasRecuperacao = require('./rotas/recuperacao-senha');
 
 // ------------------------------------------------------------------
 // Rotas da API
@@ -35,16 +41,27 @@ rotasDono.registrar(roteador);
 rotasPaginas.registrar(roteador);
 rotasAgenda.registrar(roteador);
 rotasArquivos.registrar(roteador);
+rotasProtecao.registrar(roteador);
+rotasRecuperacao.registrar(roteador);
+rotasGoogleLogin.registrar(roteador);
+
+// O anti-robô fica mais difícil quando o escudo liga o modo de defesa
+antiRobo.definirFonteModoDefesa(() => escudo.modoDefesaAtivo());
+escudo.aoAtivarModoDefesa((motivo) => {
+  console.warn(`[escudo] MODO DE DEFESA ligado: ${motivo}`);
+  registrarAuditoria(null, 'modo-defesa-ativado', motivo, '');
+});
 
 /** Atende um pedido para /api/... */
-async function tratarApi(requisicao, resposta, endereco) {
+async function tratarApi(requisicao, resposta, endereco, ip) {
   const sessao = seguranca.lerSessao(requisicao);
   const contexto = {
     requisicao,
     resposta,
     consulta: endereco.searchParams,
     parametros: {},
-    ip: seguranca.ipDoCliente(requisicao),
+    ip,
+    modoDefesa: escudo.modoDefesaAtivo(),
     sessao,
     usuario: sessao?.usuario || null,
     cabecalhosResposta: {},
@@ -101,6 +118,7 @@ const TELAS = {
   '/painel': { arquivo: 'painel.html', papeis: ['adm', 'dono'] },
   '/editor': { arquivo: 'editor.html', papeis: ['adm', 'dono'] },
   '/minha-conta': { arquivo: 'minha-conta.html', papeis: ['usuario', 'adm', 'dono'] },
+  '/redefinir-senha': { arquivo: 'redefinir-senha.html' },
   '/pre-visualizacao': { arquivo: 'pagina.html', papeis: ['adm', 'dono'] },
 };
 
@@ -168,6 +186,22 @@ function tratarTela(requisicao, resposta, endereco) {
 
 function criarServidor() {
   const servidor = http.createServer((requisicao, resposta) => {
+    // 1º de tudo: o ESCUDO. Pedido recusado aqui custa quase nada ao computador.
+    const ip = seguranca.ipDoCliente(requisicao);
+    const avaliacao = escudo.avaliar(ip);
+    if (!avaliacao.permitido) {
+      resposta.writeHead(avaliacao.status, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Retry-After': String(avaliacao.tentarEmSegundos),
+        'Cache-Control': 'no-store',
+        Connection: 'close',
+      });
+      resposta.end(avaliacao.status === 503 ? 'Sistema ocupado. Tente em alguns segundos.' : 'Muitos pedidos. Aguarde e tente de novo.');
+      requisicao.resume();
+      return;
+    }
+    resposta.on('close', avaliacao.liberar);
+
     let endereco;
     try {
       endereco = new URL(requisicao.url, 'http://localhost');
@@ -177,12 +211,20 @@ function criarServidor() {
       return;
     }
     if (endereco.pathname.startsWith('/api/')) {
-      tratarApi(requisicao, resposta, endereco);
+      tratarApi(requisicao, resposta, endereco, ip);
       return;
     }
     if (requisicao.method !== 'GET' && requisicao.method !== 'HEAD') {
       resposta.writeHead(405, { Allow: 'GET, HEAD' });
       resposta.end();
+      return;
+    }
+    // Login com Google: rotas de navegação (não são /api, o navegador vai e volta do Google)
+    if (endereco.pathname === '/auth/google' || endereco.pathname === '/auth/google/retorno') {
+      rotasGoogleLogin.tratar(requisicao, resposta, endereco, ip).catch((erro) => {
+        console.error('[login google]', erro);
+        if (!resposta.headersSent) redirecionar(resposta, '/entrar?erro=google');
+      });
       return;
     }
     try {
@@ -197,6 +239,8 @@ function criarServidor() {
   servidor.headersTimeout = 15 * 1000;
   servidor.requestTimeout = 60 * 1000;
   servidor.keepAliveTimeout = 5 * 1000;
+  servidor.maxConnections = 1000;            // teto de conexões abertas ao mesmo tempo
+  servidor.maxRequestsPerSocket = 200;
   return servidor;
 }
 
@@ -205,15 +249,19 @@ function iniciar() {
   abrirBanco();
   const codigoInicial = rotasAutenticacao.prepararConfiguracaoInicial();
   if (!configuracao.modoTeste) agendarManutencao();
+  escudo.iniciarLimpezaPeriodica();
 
   const servidor = criarServidor();
-  servidor.listen(configuracao.porta, configuracao.host, () => {
+  const verificacaoTailscale = require('./servicos/tailscale').iniciarVerificacaoPeriodica();
+  servidor.listen(configuracao.porta, configuracao.host, async () => {
+    await verificacaoTailscale; // para já mostrar o endereço público na tela
     const linha = '='.repeat(64);
     console.log(`\n${linha}\n  StylOS Beauty está LIGADO\n${linha}`);
     const portaReal = servidor.address().port;
     console.log(`  Neste computador:  http://localhost:${portaReal}`);
     const urlPublica = rotasAutenticacao.urlPublicaAtual();
     if (urlPublica) console.log(`  Na internet:       ${urlPublica}`);
+    else console.log(`  Na internet:       (ainda não) ${require('./servicos/tailscale').situacao().dica}`);
     if (codigoInicial) {
       console.log(`\n  PRIMEIRA VEZ? Abra http://localhost:${portaReal}/configuracao-inicial`);
       console.log(`  e use o código:  ${codigoInicial}`);

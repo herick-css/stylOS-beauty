@@ -17,12 +17,33 @@ const RAIZ = path.resolve(__dirname, '..');
 
 /** Google falso: confere a assinatura do JWT e devolve blocos ocupados configuráveis. */
 function iniciarGoogleFalso() {
-  const estado = { chavePublica: null, ocupadosPorAgenda: {}, pedidos: [] };
+  const chavesOauth = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const estado = { chavePublica: null, ocupadosPorAgenda: {}, pedidos: [], codigos: new Map(), chavesOauth, kid: 'chave-teste-1' };
   const servidor = http.createServer((requisicao, resposta) => {
     let corpo = '';
     requisicao.on('data', (pedaco) => { corpo += pedaco; });
     requisicao.on('end', () => {
       estado.pedidos.push({ url: requisicao.url, corpo, autorizacao: requisicao.headers.authorization });
+      if (requisicao.url === '/certs') {
+        const jwk = estado.chavesOauth.publicKey.export({ format: 'jwk' });
+        resposta.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' });
+        resposta.end(JSON.stringify({ keys: [{ ...jwk, kid: estado.kid, alg: 'RS256', use: 'sig' }] }));
+        return;
+      }
+      if (requisicao.url === '/token' && new URLSearchParams(corpo).get('grant_type') === 'authorization_code') {
+        const parametros = new URLSearchParams(corpo);
+        const pedido = estado.codigos.get(parametros.get('code'));
+        const pkceOk = pedido && crypto.createHash('sha256').update(parametros.get('code_verifier') || '').digest('base64url') === pedido.desafioPkce;
+        if (!pedido || !pkceOk || parametros.get('client_secret') !== pedido.segredoEsperado) {
+          resposta.writeHead(400, { 'content-type': 'application/json' });
+          resposta.end(JSON.stringify({ error: 'invalid_grant' }));
+          return;
+        }
+        estado.codigos.delete(parametros.get('code'));
+        resposta.writeHead(200, { 'content-type': 'application/json' });
+        resposta.end(JSON.stringify({ access_token: 'x', id_token: pedido.idToken }));
+        return;
+      }
       if (requisicao.url === '/token') {
         const assercao = new URLSearchParams(corpo).get('assertion') || '';
         const [cabecalho, declaracoes, assinatura] = assercao.split('.');
@@ -66,7 +87,12 @@ function iniciarGoogleFalso() {
 function iniciarServidor(variaveisExtras = {}) {
   const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'stylos-teste-'));
   const processo = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', path.join(RAIZ, 'servidor/principal.js')], {
-    env: { ...process.env, PASTA_DADOS: pasta, PORTA: '0', HOST: '127.0.0.1', STYLOS_MODO_TESTE: '1', ...variaveisExtras },
+    env: {
+      ...process.env, PASTA_DADOS: pasta, PORTA: '0', HOST: '127.0.0.1', STYLOS_MODO_TESTE: '1',
+      ANTI_ROBO_DIFICULDADE: '4', ESCUDO_PEDIDOS_POR_SEGUNDO: '2000', ESCUDO_RAJADA: '5000', ESCUDO_SIMULTANEOS_POR_IP: '500',
+      TAILSCALE_CAMINHO: path.join(os.tmpdir(), 'nao-existe-tailscale'),
+      ...variaveisExtras,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let saida = '';
@@ -98,7 +124,18 @@ class Cliente {
     this.ip = ip || `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
   }
 
-  async pedir(metodo, caminho, corpo, { semCabecalhoCsrf = false, cabecalhos = {}, binario, tipo } = {}) {
+  /** Pede e resolve um desafio "Não sou um robô" (como o navegador faria). */
+  async antiRobo() {
+    const { resolverDesafio } = require('../servidor/servicos/anti-robo');
+    const resposta = await fetch(`${this.base}/api/anti-robo/desafio`, { headers: { 'x-forwarded-for': this.ip } });
+    return resolverDesafio(await resposta.json());
+  }
+
+  async pedir(metodo, caminho, corpo, { semCabecalhoCsrf = false, cabecalhos = {}, binario, tipo, semAntiRobo = false } = {}) {
+    // Rotas com "Não sou um robô": anexa a prova sozinho (a não ser que o teste peça para não anexar)
+    if (!semAntiRobo && corpo && typeof corpo === 'object' && corpo.antiRobo === undefined && /\/api\/(cadastro|recuperar-senha)$|\/agendamentos$/.test(caminho) && metodo === 'POST') {
+      corpo = { ...corpo, antiRobo: await this.antiRobo() };
+    }
     const opcoes = {
       method: metodo,
       headers: { 'x-forwarded-for': this.ip, ...(this.cookie ? { cookie: this.cookie } : {}), ...(semCabecalhoCsrf ? {} : { 'x-stylos': '1' }), ...cabecalhos },
@@ -143,4 +180,59 @@ function gerarContaServicoFalsa() {
 /** PNG mínimo válido (1x1) para testar envio de fotos. */
 const PNG_MINIMO = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
-module.exports = { iniciarServidor, pararServidor, iniciarGoogleFalso, Cliente, gerarContaServicoFalsa, PNG_MINIMO };
+/** Monta um id_token JWT assinado (como o Google faria). */
+function assinarIdToken(chavePrivada, kid, declaracoes) {
+  const codificar = (objeto) => Buffer.from(JSON.stringify(objeto)).toString('base64url');
+  const cabecalho = codificar({ alg: 'RS256', kid, typ: 'JWT' });
+  const corpo = codificar(declaracoes);
+  const assinatura = crypto.sign('RSA-SHA256', Buffer.from(`${cabecalho}.${corpo}`), chavePrivada).toString('base64url');
+  return `${cabecalho}.${corpo}.${assinatura}`;
+}
+
+/** SMTP falso: aceita a conversa e guarda as mensagens recebidas. */
+function iniciarSmtpFalso() {
+  const net = require('node:net');
+  const mensagens = [];
+  const servidor = net.createServer((socket) => {
+    let lendoDados = false;
+    let dados = '';
+    let buffer = '';
+    socket.write('220 smtp-falso pronto\r\n');
+    socket.on('data', (pedaco) => {
+      buffer += pedaco.toString('utf8');
+      if (lendoDados) {
+        const fim = buffer.indexOf('\r\n.\r\n');
+        if (fim === -1) return;
+        dados += buffer.slice(0, fim);
+        buffer = buffer.slice(fim + 5);
+        lendoDados = false;
+        mensagens.push(dados);
+        socket.write('250 recebido\r\n');
+      }
+      let posicao;
+      while (!lendoDados && (posicao = buffer.indexOf('\r\n')) !== -1) {
+        const linha = buffer.slice(0, posicao);
+        buffer = buffer.slice(posicao + 2);
+        if (/^EHLO/i.test(linha)) socket.write('250-smtp-falso\r\n250 AUTH LOGIN\r\n');
+        else if (/^AUTH LOGIN/i.test(linha)) socket.write('334 VXNlcm5hbWU6\r\n');
+        else if (linha === Buffer.from('robo@stylos.test').toString('base64')) socket.write('334 UGFzc3dvcmQ6\r\n');
+        else if (linha === Buffer.from('senhadeappteste').toString('base64')) socket.write('235 ok\r\n');
+        else if (/^(MAIL|RCPT)/i.test(linha)) socket.write('250 ok\r\n');
+        else if (/^DATA/i.test(linha)) { lendoDados = true; dados = ''; socket.write('354 manda\r\n'); }
+        else if (/^QUIT/i.test(linha)) { socket.write('221 tchau\r\n'); socket.end(); }
+        else if (linha) socket.write('535 credenciais invalidas\r\n');
+      }
+    });
+    socket.on('error', () => {});
+  });
+  return new Promise((resolver) => servidor.listen(0, '127.0.0.1', () => resolver({ servidor, mensagens, porta: servidor.address().port })));
+}
+
+/** Decodifica o corpo base64 de uma mensagem recebida pelo SMTP falso. */
+function textoDoEmail(mensagem) {
+  const [, corpo] = mensagem.split('\r\n\r\n');
+  return Buffer.from(corpo.replace(/\r\n/g, ''), 'base64').toString('utf8');
+}
+
+module.exports = {
+  assinarIdToken, iniciarSmtpFalso, textoDoEmail, iniciarServidor, pararServidor, iniciarGoogleFalso, Cliente, gerarContaServicoFalsa, PNG_MINIMO };

@@ -45,6 +45,9 @@ function executarManutencao() {
   try {
     limparSessoesExpiradas();
     limitador.limpar();
+    require('./anti-robo').limparUsados();
+    // links de redefinição de senha vencidos
+    abrirBanco().prepare('DELETE FROM redefinicoes_senha WHERE expira_em < ?').run(Date.now() - 24 * 60 * 60 * 1000);
     const backup = fazerBackupDiario();
     if (backup) console.log(`[manutenção] backup criado: ${path.basename(backup)}`);
     const anonimizados = aplicarRetencaoDeDados();

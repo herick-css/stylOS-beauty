@@ -733,6 +733,9 @@
           el('span', { classe: 'link-publicado__icone' }, [icone('check', 34)]),
           el('p', { texto: 'Este é o link da sua página. Coloque na bio do Instagram, mande no WhatsApp ou use no botão do site do Canva.' }),
           blocoCopiavel(link),
+          /^http:\/\/(localhost|127\.)/.test(link)
+            ? alerta('Este link só abre NESTE computador. Para funcionar no celular das clientes, ligue o Tailscale Funnel (o dono vê o passo a passo em "Sistema e segurança").', 'aviso')
+            : null,
           el('div', { classe: 'cabecalho-tela__acoes' }, [
             el('a', { classe: 'botao botao--secundario', href: link, target: '_blank', rel: 'noopener' }, [icone('olho', 16), 'Abrir']),
             el('a', { classe: 'botao botao--whatsapp', href: `https://wa.me/?text=${encodeURIComponent(`Agende seu horário: ${link}`)}`, target: '_blank', rel: 'noopener noreferrer' }, [icone('whatsapp', 16), 'Compartilhar']),

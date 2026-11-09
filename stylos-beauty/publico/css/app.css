@@ -851,3 +851,30 @@ img { max-width: 100%; display: block; }
 .item-secao--fixa .item-secao__alca { visibility: hidden; }
 pre.copiavel { margin: 0; }
 pre.copiavel code { white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+
+/* ---- Caixa "Não sou um robô" ---- */
+.anti-robo { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--app-linha); border-radius: 10px; background: var(--app-superficie-2); }
+.anti-robo__caixa { display: inline-flex; align-items: center; gap: 10px; padding: 4px 2px; border: 0; background: none; color: inherit; font: inherit; font-size: 0.92rem; font-weight: 600; cursor: pointer; text-align: left; }
+.anti-robo__caixa:disabled { cursor: default; }
+.anti-robo__marca { position: relative; flex-shrink: 0; width: 24px; height: 24px; border-radius: 6px; border: 2px solid #9a93a3; background: #fff; transition: background-color 0.2s ease, border-color 0.2s ease; }
+.anti-robo[data-estado="verificando"] .anti-robo__marca { border-color: #c9c3d0; border-top-color: var(--app-marca); border-radius: 50%; animation: girar 0.8s linear infinite; }
+.anti-robo[data-estado="ok"] .anti-robo__marca { background: #1f8f55; border-color: #1f8f55; }
+.anti-robo[data-estado="ok"] .anti-robo__marca::after { content: ""; position: absolute; left: 6px; top: 1px; width: 6px; height: 12px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+.anti-robo[data-estado="erro"] .anti-robo__marca { border-color: #c2412d; }
+.anti-robo[data-estado="erro"] .anti-robo__texto { color: #b42318; font-weight: 500; }
+.anti-robo__selo { font-size: 0.7rem; opacity: 0.65; letter-spacing: 0.02em; }
+
+
+/* ---- Login com Google e links ---- */
+.botao-google { gap: 10px; border-color: #d5d0c8; }
+.botao-google .icone { color: #4285f4; }
+.separador-ou { display: flex; align-items: center; gap: 12px; margin: 18px 0 2px; color: var(--app-suave); font-size: 0.82rem; }
+.separador-ou::before, .separador-ou::after { content: ''; flex: 1; height: 1px; background: var(--app-linha); }
+.link-botao-app { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 6px 0; color: var(--app-marca); font-weight: 600; font-size: 0.9rem; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.indicador { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.indicador::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--app-sucesso); }
+.indicador--alerta::before { background: var(--app-perigo); animation: pulsar-borda 1.2s ease infinite; }
+.numeros-escudo { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 12px 0; }
+.numeros-escudo div { padding: 10px 12px; border-radius: 10px; background: var(--app-superficie-2); border: 1px solid var(--app-linha); }
+.numeros-escudo strong { display: block; font-size: 1.3rem; }
+.numeros-escudo span { font-size: 0.78rem; color: var(--app-suave); }

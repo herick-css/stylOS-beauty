@@ -7,6 +7,7 @@
   const { el, trocar, icone, marca, api, avisar, confirmar, alerta, campo, medidorSenha, formatarDataHora } = window.StylOS;
   const principal = document.getElementById('principal');
   let usuario = null;
+  let loginGoogle = false;
 
   const NOMES_STATUS = { pendente: ['Aguardando confirmação', 'etiqueta--aviso'], confirmado: ['Confirmado', 'etiqueta--sucesso'], cancelado: ['Cancelado', 'etiqueta--perigo'], concluido: ['Concluído', ''] };
 
@@ -48,6 +49,7 @@
     const telefone = campo({ id: 'telefone', rotulo: 'WhatsApp', valor: usuario.telefone, tipo: 'tel' });
     const areaDados = el('div');
     const senhaAtual = campo({ id: 'senha-atual', rotulo: 'Senha atual', tipo: 'password', atributos: { autocomplete: 'current-password' } });
+    if (!usuario.temSenha) senhaAtual.elemento.hidden = true; // conta criada pelo Google: ainda não tem senha
     const senhaNova = campo({ id: 'senha-nova', rotulo: 'Nova senha', tipo: 'password', dica: 'Mínimo 8 caracteres com letras e números.', atributos: { autocomplete: 'new-password' } });
     senhaNova.elemento.insertBefore(medidorSenha(senhaNova.entrada), senhaNova.elemento.lastChild);
     const areaSenha = el('div');
@@ -71,13 +73,14 @@
             } catch (erro) { areaDados.append(alerta(erro.message)); }
           },
         })]),
-        el('section', { classe: 'cartao' }, [el('h2', { texto: 'Trocar senha' }), senhaAtual.elemento, senhaNova.elemento, areaSenha, el('button', {
+        el('section', { classe: 'cartao' }, [el('h2', { texto: usuario.temSenha ? 'Trocar senha' : 'Criar uma senha (opcional)' }), senhaAtual.elemento, senhaNova.elemento, areaSenha, el('button', {
           classe: 'botao botao--primario', type: 'button', texto: 'Trocar senha',
           aoClick: async () => {
             areaSenha.replaceChildren();
             try {
               await api('/api/trocar-senha', { corpo: { senhaAtual: senhaAtual.entrada.value, novaSenha: senhaNova.entrada.value } });
-              const eraTemporaria = usuario.deveTrocarSenha;
+              const eraTemporaria = usuario.deveTrocarSenha || !usuario.temSenha;
+              usuario.temSenha = true;
               usuario.deveTrocarSenha = false;
               senhaAtual.entrada.value = '';
               senhaNova.entrada.value = '';
@@ -87,6 +90,26 @@
           },
         })]),
       ]),
+      loginGoogle || usuario.googleVinculado ? el('p') : null,
+      loginGoogle || usuario.googleVinculado ? el('section', { classe: 'cartao' }, [
+        el('h2', { texto: 'Entrar com Google' }),
+        usuario.googleVinculado
+          ? el('p', { texto: 'Sua conta Google está vinculada: você entra com um clique.' })
+          : el('p', { classe: 'texto-suave', texto: 'Vincule para entrar com um clique, sem senha.' }),
+        usuario.googleVinculado
+          ? (usuario.temSenha ? el('button', {
+              classe: 'botao botao--secundario botao--pequeno', type: 'button', texto: 'Desvincular',
+              aoClick: async () => {
+                try {
+                  await api('/api/conta/google/desvincular', { corpo: {} });
+                  usuario.googleVinculado = false;
+                  avisar('Google desvinculado.');
+                  desenhar();
+                } catch (erro) { avisar(erro.message, 'erro', 6000); }
+              },
+            }) : null)
+          : el('a', { classe: 'botao botao--secundario', href: `/auth/google?modo=vincular&voltar=${encodeURIComponent('/minha-conta')}` }, [icone('google', 18), 'Vincular conta Google']),
+      ]) : null,
       el('p', { classe: 'texto-suave texto-pequeno', texto: 'Quer apagar sua conta e seus dados? Peça ao salão (LGPD).' }),
     );
   }
@@ -94,6 +117,13 @@
   async function iniciar() {
     const sessao = await api('/api/sessao');
     usuario = sessao.usuario;
+    loginGoogle = Boolean(sessao.loginGoogle);
+    const retornoGoogle = new URLSearchParams(location.search).get('google');
+    if (retornoGoogle) {
+      if (retornoGoogle === 'vinculado') { avisar('Conta Google vinculada!'); usuario.googleVinculado = true; }
+      if (retornoGoogle === 'em-uso') avisar('Essa conta Google já está ligada a outro usuário.', 'erro', 7000);
+      history.replaceState(null, '', location.pathname);
+    }
     if (usuario.papel !== 'usuario') {
       // ADM/dono também podem abrir esta tela, mas o lugar deles é o painel
       location.href = '/painel';

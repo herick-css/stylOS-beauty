@@ -19,7 +19,7 @@ echo.
 REM ---------- 1. Node.js ----------
 where node >nul 2>nul
 if %errorlevel% neq 0 (
-  echo  [1/4] O Node.js nao esta instalado. Instalando a versao LTS...
+  echo  [1/5] O Node.js nao esta instalado. Instalando a versao LTS...
   winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements
   if errorlevel 1 (
     echo.
@@ -35,7 +35,7 @@ if %errorlevel% neq 0 (
 )
 for /f "tokens=1 delims=v." %%v in ('node -v') do set NODE_MAIOR=%%v
 for /f "tokens=*" %%v in ('node -v') do set NODE_VERSAO=%%v
-echo  [1/4] Node.js encontrado: %NODE_VERSAO%
+echo  [1/5] Node.js encontrado: %NODE_VERSAO%
 node -e "const [a,b]=process.versions.node.split('.').map(Number);process.exit(a>22||(a===22&&b>=13)?0:1)"
 if %errorlevel% neq 0 (
   echo  Sua versao do Node.js e antiga. Atualizando para a LTS...
@@ -47,7 +47,7 @@ if %errorlevel% neq 0 (
 
 REM ---------- 2. Tunel (Tailscale Funnel) ----------
 echo.
-echo  [2/4] Para as clientes acessarem pela internet, usamos um TUNEL seguro
+echo  [2/5] Para as clientes acessarem pela internet, usamos um TUNEL seguro
 echo        (nao precisa abrir portas no roteador e o seu IP fica escondido).
 choice /c SN /m "        Instalar o Tailscale agora"
 if %errorlevel%==1 (
@@ -67,7 +67,7 @@ if %errorlevel%==1 (
 
 REM ---------- 3. Ligar junto com o Windows ----------
 echo.
-choice /c SN /m "  [3/4] Ligar o StylOS sozinho sempre que voce entrar no Windows"
+choice /c SN /m "  [3/5] Ligar o StylOS sozinho sempre que voce entrar no Windows"
 if %errorlevel%==1 (
   schtasks /create /f /sc onlogon /rl limited /tn "StylOS Beauty" /tr "\"%~dp0INICIAR-STYLOS.bat\"" >nul
   if errorlevel 1 (echo        Nao consegui criar a tarefa.) else (echo        Pronto: tarefa "StylOS Beauty" criada.)
@@ -75,11 +75,21 @@ if %errorlevel%==1 (
 
 REM ---------- 4. Nao dormir ----------
 echo.
-choice /c SN /m "  [4/4] Impedir o computador de dormir quando estiver na tomada"
+choice /c SN /m "  [4/5] Impedir o computador de dormir quando estiver na tomada"
 if %errorlevel%==1 (
   powercfg /change standby-timeout-ac 0
   powercfg /change hibernate-timeout-ac 0
   echo        Pronto. A tela ainda pode desligar, o computador nao.
+)
+
+REM ---------- 5. Notebook: tampa fechada ----------
+echo.
+choice /c SN /m "  [5/5] E um NOTEBOOK? Continuar ligado com a tampa fechada (na tomada)"
+if %errorlevel%==1 (
+  powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+  powercfg /setactive SCHEME_CURRENT
+  echo        Pronto. Na tomada, fechar a tampa nao desliga o StylOS.
+  echo        Dica: deixe o notebook num lugar ventilado.
 )
 
 echo.

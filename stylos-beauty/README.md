@@ -12,6 +12,8 @@ pedidos de horário no WhatsApp**, conferidos com a Google Agenda.
 - 9 modelos de seção, 5 temas (masculino, feminino e neutro), editor com prévia ao vivo
 - Tutorial guiado e página de exemplo no primeiro acesso
 - Agendamento: serviço → dia → horário livre → dados → WhatsApp do ADM
+- Login com e-mail/senha **ou com Google**; "Esqueci minha senha" por e-mail
+- "Não sou um robô" próprio (sem rastreamento) e **escudo contra abuso/DDoS**
 
 ---
 
@@ -36,9 +38,10 @@ pedidos de horário no WhatsApp**, conferidos com a Google Agenda.
 2. No mesmo computador, abra `http://localhost:3000/configuracao-inicial`,
    digite o código e crie a conta do **dono**.
 3. No painel, siga o tutorial. Depois:
-   - **Sistema e segurança → Endereço público**: cole o endereço do túnel
-     (ex.: `https://salao-senac.tail1234.ts.net`);
-   - **Integração Google**: siga o guia da tela (uns 10 minutos, uma vez só);
+   - **Sistema e segurança → Publicação na internet**: confira se aparece
+     "No ar" com o endereço `https://<notebook>.<rede>.ts.net` (detectado sozinho);
+   - **Sistema e segurança → E-mail**: Gmail + senha de app, para o "Esqueci minha senha";
+   - **Integração Google**: agenda dos ADMs e "Entrar com Google" (guias na tela);
    - **Administradores → Cadastrar ADM**: o sistema gera uma senha temporária
      e uma mensagem pronta para enviar à pessoa.
 
@@ -46,6 +49,10 @@ pedidos de horário no WhatsApp**, conferidos com a Google Agenda.
 
 O servidor só aceita conexões do próprio computador (`127.0.0.1`). Quem
 leva até ele é o túnel: sem abrir portas no roteador e sem mostrar o seu IP.
+
+> **Os links saem como `localhost`?** É sinal de que o Funnel não está ligado.
+> O StylOS **detecta sozinho** o endereço do Tailscale (a cada 5 minutos, ou no
+> botão "Verificar de novo" em *Sistema e segurança*) e passa a usá-lo em todos os links.
 
 **Tailscale Funnel** (grátis para uso não comercial, sem domínio):
 ```
@@ -78,7 +85,17 @@ As páginas públicas também permitem ser embutidas em `*.canva.site`.
 4. **Agendamentos**: confirme, cancele, avise a cliente pelo WhatsApp ou
    crie o evento na sua Google Agenda com um clique.
 
-## 6. Pastas
+## 6. Segurança no dia a dia
+- **Não sou um robô**: aparece no cadastro, no pedido de horário, no "Esqueci
+  minha senha" e no login depois de 2 senhas erradas. Ele começa sozinho
+  quando a pessoa toca no formulário (cerca de 1 segundo).
+- **Escudo**: em *Sistema e segurança* você vê pedidos por minuto, IPs
+  bloqueados e o modo de defesa (automático, ou ligado/desligado na mão), e
+  tem o botão "Desbloquear todos".
+- **Notebook como servidor**: deixe na tomada, use a opção do instalador para
+  não dormir com a tampa fechada e ative a criptografia do disco do Windows.
+
+## 7. Pastas
 
 ```
 stylos-beauty/
@@ -91,7 +108,9 @@ stylos-beauty/
 │  ├─ seguranca.js         ← senhas, sessões, CSRF, limites, CSP, criptografia
 │  ├─ utilitarios.js       ← JSON, arquivos estáticos, mini-roteador
 │  ├─ rotas/               ← autenticacao, dono, paginas, agenda, arquivos
-│  └─ servicos/            ← horarios, google-agenda, manutencao (backup/LGPD), dados-iniciais
+│  ├─ rotas/protecao.js, google-login.js, recuperacao-senha.js   ← versão 2
+│  └─ servicos/            ← horarios, google-agenda, manutencao (backup/LGPD), dados-iniciais,
+│                             anti-robo, escudo (anti-DDoS), email (SMTP), tailscale
 ├─ publico/                ← tudo que o navegador recebe
 │  ├─ *.html               ← telas
 │  ├─ css/site.css         ← páginas dos salões e os 5 temas
@@ -105,8 +124,8 @@ stylos-beauty/
 └─ dados/                  ← CRIADA SOZINHA: banco, fotos, backups, segredo (NUNCA versionar)
 ```
 
-## 7. Para quem for mexer no código
-- **Rodar os testes:** `npm run testar` (56 testes, não precisa de internet).
+## 8. Para quem for mexer no código
+- **Rodar os testes:** `npm run testar` (85 testes, não precisa de internet).
 - **Nova seção:** crie o tipo em `TIPOS_SECAO` (`esquemas-secoes.js`) e a
   função `desenhar.<tipo>` em `renderizador.js`. O formulário do editor e a
   validação do servidor saem sozinhos do esquema.
@@ -120,9 +139,14 @@ stylos-beauty/
 - Mudou o banco? Crie uma nova entrada em `MIGRACOES` (`banco.js`). Nunca
   edite uma migração antiga.
 
-## 8. Problemas comuns
+## 9. Problemas comuns
 | Sintoma | Solução |
 |---|---|
+| Link da página sai como `http://localhost...` | O Funnel não está ligado. Rode `tailscale funnel --bg 3000` e clique em "Verificar de novo" (*Sistema e segurança*) |
+| "Criar conta" leva a "Você já está conectado" | Você está logado (ex.: como dono). Saia ou use uma janela anônima para testar como cliente |
+| "Muitos pedidos. Aguarde" | O escudo bloqueou o endereço. O dono pode clicar em "Desbloquear todos" |
+| "Entrar com Google" dá erro de redirecionamento | O URI de redirecionamento no Google Cloud precisa ser EXATAMENTE o mostrado no painel (com `https://...ts.net`) |
+| E-mail de teste falha | Use uma **senha de app** (verificação em duas etapas ligada), não a senha normal do Gmail |
 | "precisa do Node.js 22.13 ou mais novo" | Rode o instalador ou instale a LTS em nodejs.org |
 | `EADDRINUSE` | Já existe um StylOS aberto (feche a outra janela) ou mude `PORTA` no `.env` (e no túnel) |
 | Página fora do ar | O PC está ligado? A janela preta está aberta? O túnel está ativo (`tailscale funnel status`)? |

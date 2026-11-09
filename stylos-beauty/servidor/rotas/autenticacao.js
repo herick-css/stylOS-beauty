@@ -18,6 +18,9 @@ const { abrirBanco, registrarAuditoria, emTransacao } = require('../banco');
 const seguranca = require('../seguranca');
 const { ErroHttp, lerCorpoJson, textoLimpo, emailValido, soDigitos } = require('../utilitarios');
 const { criarDadosIniciaisDoAdm } = require('../servicos/dados-iniciais');
+const { exigirAntiRobo } = require('./protecao');
+const escudo = require('../servicos/escudo');
+const email = require('../servicos/email');
 
 // ------------------------------------------------------------------
 // Código da configuração inicial
@@ -61,12 +64,19 @@ function usuarioPublico(usuario) {
     deveTrocarSenha: Boolean(usuario.deve_trocar_senha),
     tutorialPainel: Boolean(usuario.tutorial_painel),
     tutorialEditor: Boolean(usuario.tutorial_editor),
+    // conta criada pelo Google pode não ter senha ("!sem-senha")
+    temSenha: usuario.tem_senha !== undefined ? Boolean(usuario.tem_senha) : !String(usuario.senha_hash || '!').startsWith('!'),
+    googleVinculado: Boolean(usuario.google_sub),
   };
 }
 
+/**
+ * Endereço público usado nos links (páginas, e-mails, login com Google).
+ * Prioridade: o que o dono digitou no painel > .env > detectado no Tailscale.
+ */
 function urlPublicaAtual() {
   const { lerConfiguracaoGlobal } = require('../banco');
-  return lerConfiguracaoGlobal('url_publica') || configuracao.urlPublica || '';
+  return lerConfiguracaoGlobal('url_publica') || configuracao.urlPublica || require('../servicos/tailscale').urlDetectada() || '';
 }
 
 function iniciarSessaoNaResposta(contexto, usuarioId) {
@@ -80,6 +90,9 @@ function registrar(roteador) {
     usuario: usuarioPublico(contexto.sessao?.usuario),
     configuracaoInicialPendente: !existeDono(),
     urlPublica: urlPublicaAtual(),
+    loginGoogle: require('./google-login').loginGoogleAtivo(),
+    recuperacaoPorEmail: email.emailConfigurado(),
+    modoDefesa: contexto.modoDefesa,
   }), { publica: true });
 
   // ---------------- Configuração inicial (cria o DONO) ----------------
@@ -124,11 +137,17 @@ function registrar(roteador) {
         !seguranca.limitador.permitir(chaveConta, 8, 15 * 60 * 1000)) {
       throw new ErroHttp(429, 'Muitas tentativas de login. Aguarde 15 minutos e tente de novo.');
     }
+    // "Não sou um robô" só depois de 2 erros desta conexão (ou em modo de defesa)
+    const chaveFalhas = `falhas-login:${escudo.chaveDoIp(contexto.ip)}`;
+    if (contexto.modoDefesa || seguranca.limitador.contar(chaveFalhas, 15 * 60 * 1000) >= 2) exigirAntiRobo(corpo);
     const usuario = abrirBanco().prepare('SELECT * FROM usuarios WHERE email = ?').get(email);
     const senhaConfere = await seguranca.verificarSenha(String(corpo.senha || ''), usuario?.senha_hash);
     if (!usuario || !senhaConfere) {
+      seguranca.limitador.permitir(chaveFalhas, 1000, 15 * 60 * 1000);
       registrarAuditoria(usuario?.id, 'login-falhou', email, contexto.ip);
-      throw new ErroHttp(401, 'E-mail ou senha incorretos.'); // mensagem igual nos dois casos (não revela se o e-mail existe)
+      const precisaAntiRobo = seguranca.limitador.contar(chaveFalhas, 15 * 60 * 1000) >= 2;
+      // mensagem igual nos dois casos (não revela se o e-mail existe)
+      throw new ErroHttp(401, 'E-mail ou senha incorretos.', precisaAntiRobo ? { codigo: 'anti-robo' } : undefined);
     }
     if (!usuario.ativo) throw new ErroHttp(403, 'Esta conta está desativada. Fale com o responsável pelo sistema.');
     seguranca.limitador.zerar(chaveConta);
@@ -161,6 +180,7 @@ function registrar(roteador) {
     const problema = seguranca.problemaNaSenha(corpo.senha);
     if (problema) throw new ErroHttp(400, problema);
 
+    exigirAntiRobo(corpo);
     const banco = abrirBanco();
     if (banco.prepare('SELECT 1 FROM usuarios WHERE email = ?').get(email)) {
       throw new ErroHttp(409, 'Já existe uma conta com este e-mail. Tente entrar.');
@@ -183,7 +203,8 @@ function registrar(roteador) {
     }
     const banco = abrirBanco();
     const usuario = banco.prepare('SELECT * FROM usuarios WHERE id = ?').get(contexto.usuario.id);
-    if (!(await seguranca.verificarSenha(String(corpo.senhaAtual || ''), usuario.senha_hash))) {
+    const semSenha = String(usuario.senha_hash).startsWith('!'); // conta criada pelo Google
+    if (!semSenha && !(await seguranca.verificarSenha(String(corpo.senhaAtual || ''), usuario.senha_hash))) {
       throw new ErroHttp(400, 'A senha atual não confere.');
     }
     const problema = seguranca.problemaNaSenha(corpo.novaSenha);

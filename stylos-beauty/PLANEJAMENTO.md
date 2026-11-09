@@ -225,36 +225,139 @@ Recomendação: **A** para o projeto da turma. Se virar serviço de verdade,
 ---
 
 ## 6. O que foi testado
-- **56 testes automáticos** (`npm run testar`): 7 do cálculo de horários
-  (fuso, horário de verão, almoço, antecedência) e 49 de API/segurança
-  (papéis, CSRF, limite de login, isolamento entre ADMs, boas práticas,
-  pedidos simultâneos, fotos disfarçadas, path traversal, integração com um
-  Google simulado, desativação de ADM, registro de atividades).
-- **Teste no navegador** (Chrome automatizado) do fluxo inteiro, em computador
-  e celular: configuração inicial, tutorial, cadastro de ADM, troca de senha
-  obrigatória, editor (prévia ao vivo, destaque com asteriscos, tentativa de
-  XSS bloqueada, regras de publicação), página pública nos 5 temas,
-  agendamento até o link do WhatsApp e confirmação no painel.
+- **85 testes automáticos** (`npm run testar`): 7 do cálculo de horários, 49 de
+  API/segurança e 29 das proteções novas (anti-robô, escudo, login com Google,
+  recuperação de senha, detecção do Tailscale).
+- **Teste no navegador** (Chrome automatizado), em computador e celular, do
+  fluxo inteiro, incluindo o "Não sou um robô" na dificuldade real.
   Zero erros de JavaScript e zero bloqueios da política de segurança.
 
-**Não deu para testar daqui** (sem internet no ambiente): o Google de
-verdade (só o simulado), o túnel real, o site do Canva, um Windows real
-rodando os `.bat`, e as fontes do Google Fonts (nos testes apareceram as
-fontes reservas). Faça um teste completo num PC do Senac antes de apresentar.
+**Não deu para testar daqui** (sem internet no ambiente): o Google de verdade
+(agenda e login foram testados com um Google simulado, com assinatura RSA
+real), o Gmail de verdade (testado com um servidor de e-mail simulado), o
+Tailscale de verdade (testado com um programa simulado que responde igual),
+o Canva e os `.bat` num Windows real. Faça um teste completo no notebook antes
+de apresentar.
 
 ---
 
-## 7. Perguntas para você decidir
-1. **Onde fica o servidor?** Num PC do laboratório do Senac (precisa de
-   autorização da TI e de ficar ligado) ou no computador de alguém da turma?
-2. **Tailscale (grátis, não comercial) ou Cloudflare (grátis, exige domínio
-   próprio)?** Se o salão-escola for atender o público, prefira Cloudflare.
-3. **Agendamento exige conta de cliente?** Hoje é opcional por ADM (padrão:
-   não exige, para não afastar clientes).
-4. **Quantos ADMs** imagina? (Limite atual: 20 páginas e 300 fotos por ADM;
-   dá para mudar.)
-5. A **TI do Senac** permite instalar o Tailscale/cloudflared nas máquinas?
-6. Quer que eu adicione **recuperação de senha por e-mail**? (Exige uma conta
-   de envio de e-mail; hoje o dono gera uma senha temporária.)
-7. Quer **fotos/vídeos enviados direto** no vídeo (arquivo), além de link do
-   YouTube/Vimeo? Ocupa bastante espaço no PC-servidor.
+## 7. Decisões tomadas (resposta às perguntas da versão 1)
+| Pergunta | Decisão |
+|---|---|
+| Onde fica o servidor? | **No notebook pessoal do professor** (por enquanto) |
+| Tailscale ou Cloudflare? | **Tailscale Funnel** |
+| Recuperação de senha por e-mail? | **Sim**: implementada (Gmail com senha de app) |
+
+### Cuidados por ser um NOTEBOOK pessoal
+- O instalador agora oferece **continuar ligado com a tampa fechada** (na tomada).
+- O sistema só escuta em `127.0.0.1`. Pelo túnel sai **apenas** a porta do
+  StylOS: seus arquivos pessoais não ficam expostos.
+- Os dados ficam em `dados/`. Ative a **criptografia do disco** (BitLocker ou
+  "Criptografia de dispositivo" no Windows), porque um notebook pode ser
+  perdido ou roubado, e sincronize `dados/backups` com o Google Drive.
+- Notebook desligado ou fora da internet = páginas fora do ar. Quando o
+  sistema crescer, migre para um servidor (seção 5, opção B): é o mesmo código.
+
+---
+
+## 8. Novidades da versão 2
+
+### 8.1 Por que "criar conta" parecia não funcionar
+O cadastro em si funcionava, mas a tela **redirecionava sem avisar** em dois casos:
+1. **quem já estava logado** (ex.: você, como dono) clicava em "Criar conta" e
+   caía direto no painel;
+2. **antes da configuração inicial**, ia para a tela que pede o código do servidor.
+
+Agora a tela explica o que está acontecendo ("Você já está conectado como…",
+com os botões "Ir para o painel" e "Sair e criar outra conta"; ou "Sistema
+ainda não configurado"). Para testar como cliente sem sair da conta de dono,
+use uma **janela anônima**.
+
+### 8.2 Link "localhost" → endereço público automático
+O link saía como `http://localhost:3000/p/...` porque nenhum endereço público
+estava configurado, e **esse link só abre no próprio notebook**. Agora o
+servidor pergunta ao Tailscale, a cada 5 minutos, o nome do notebook na rede
+(`https://<notebook>.<rede>.ts.net`) e se o Funnel está ligado **e apontando
+para a porta do StylOS**. Se estiver tudo certo, todos os links (páginas,
+e-mails, login com Google) passam a usar esse endereço sozinhos. O painel
+mostra um aviso amarelo enquanto os links ainda forem locais, e o cartão
+"Publicação na internet" em *Sistema e segurança* diz exatamente o que falta.
+
+### 8.3 "Não sou um robô"
+**Decisão:** em vez do reCAPTCHA do Google, usei uma **prova de trabalho**
+própria (a mesma ideia de projetos como ALTCHA e mCaptcha):
+- o navegador resolve um pequeno cálculo (cerca de 1 segundo, em segundo
+  plano), que **começa sozinho** quando a pessoa toca no formulário. Na
+  maioria das vezes, quando ela chega ao fim, já aparece "✓ Verificado";
+- cada verificação é **assinada pelo servidor, vale uma vez só e expira em 5 minutos**;
+- **sem terceiros, sem cookies de rastreamento e sem "clique nos semáforos"**:
+  bom para a LGPD e funciona mesmo se o Google estiver fora do ar.
+
+Onde vale: **cadastro, pedido de horário e "esqueci minha senha"** (sempre) e
+**login** (só depois de 2 senhas erradas, ou sempre durante um ataque).
+
+Limitação honesta: um robô com muito processamento ainda consegue passar.
+Mas cada tentativa custa caro para ele, e somada aos limites por conexão, ao
+campo-armadilha e ao máximo de pedidos por telefone, fazer milhares de
+cadastros falsos deixa de valer a pena. Se um dia isso não bastar, dá para
+trocar pelo Cloudflare Turnstile (gratuito) sem mexer no resto.
+
+### 8.4 Proteção contra DDoS — o que dá e o que NÃO dá para fazer
+**Verdade importante:** um DDoS de verdade (milhares de máquinas, gigabits por
+segundo) **derruba qualquer internet doméstica antes de chegar ao programa**.
+Nenhum código no notebook resolve isso. Quem barra esse tipo de ataque é uma
+rede grande na frente (o Cloudflare faz isso de graça, mas exige domínio
+próprio). O Tailscale Funnel também tem limites de banda nos servidores dele.
+
+O que o **escudo** faz dentro do StylOS (antes de qualquer processamento caro):
+- limite de pedidos por IP (por segundo, tolerando a rajada de abrir uma página);
+- limite de pedidos **simultâneos** por IP e no total ("corte de carga": devolve
+  "ocupado" em vez de travar);
+- **bloqueio temporário** de quem insiste: 10 minutos, depois 20, 40… (até 24 h);
+- **modo de defesa automático** quando o volume total dispara: limites pela
+  metade e "Não sou um robô" mais difícil e obrigatório também no login;
+- IPv6 agrupado por bloco /64 (o atacante não escapa trocando de endereço);
+- memória limitada (o ataque não consegue encher a memória do notebook);
+- tempos-limite contra conexões "penduradas" e teto de conexões abertas;
+- painel do dono com números ao vivo, botão de modo de defesa e "Desbloquear todos".
+
+O IP real de cada visitante é confiável: o Funnel **sobrescreve** o
+cabeçalho `X-Forwarded-For` com o endereço de origem (conferido no código do
+Tailscale), então o visitante não consegue forjá-lo.
+
+### 8.5 Login com Google
+- Botão **"Entrar com Google"** / **"Criar conta com Google"** no login e no
+  cadastro, que só aparece depois que o dono configura (guia passo a passo em
+  *Integração Google*).
+- Padrão OpenID Connect com **PKCE + state + nonce**. A assinatura do token é
+  conferida com as chaves públicas do Google, e a chave secreta fica
+  criptografada no banco e nunca vai ao navegador.
+- Só pede **nome e e-mail** (escopos básicos): o Google não exige verificação
+  do aplicativo.
+- **Cliente nova** → conta criada sozinha. **Cliente que já tinha conta com o
+  mesmo e-mail** → vinculada. Nesse caso a senha antiga é **anulada** e as
+  sessões são derrubadas, para impedir a "pré-tomada de conta": alguém que
+  tivesse cadastrado o e-mail da vítima antes perde o acesso.
+- **ADM e dono nunca são vinculados automaticamente**: entram com a senha e
+  clicam em "Vincular conta Google" em *Minha conta*.
+- Quem entrou só pelo Google pode criar uma senha depois.
+
+### 8.6 Recuperação de senha por e-mail
+- O dono configura um **Gmail com "senha de app"** (guia na tela), com botão
+  "Enviar teste". A senha fica criptografada.
+- "Esqueci minha senha" → link de **uso único que vale 30 minutos**. O banco
+  guarda só o hash do link.
+- A resposta é sempre a mesma, exista ou não a conta (ninguém descobre quais
+  e-mails estão cadastrados).
+- O link usa **sempre o endereço público**, nunca o endereço que veio no pedido
+  (isso impede o ataque de "envenenar" o link para roubar o código).
+- O código vai depois do `#` e some da barra de endereço ao abrir.
+- Ao trocar a senha, **todas as sessões abertas são encerradas**.
+
+### 8.7 Perguntas para você
+1. A turma vai usar o Gmail do salão-escola ou um Gmail criado só para o sistema
+   para enviar os e-mails? (Recomendo um só para o sistema.)
+2. O login com Google deve aparecer também para os ADMs na tela de login, ou só
+   para clientes? (Hoje aparece para todos, mas ADM só entra se já tiver vinculado.)
+3. Quer que eu prepare a migração para Cloudflare (DDoS de verdade) para quando
+   o salão tiver um domínio `.com.br`?

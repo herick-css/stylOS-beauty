@@ -19,6 +19,7 @@ const seguranca = require('../seguranca');
 const google = require('../servicos/google-agenda');
 const horarios = require('../servicos/horarios');
 const { ErroHttp, lerCorpoJson, textoLimpo, soDigitos, idValido } = require('../utilitarios');
+const { exigirAntiRobo } = require('./protecao');
 
 const ADM_OU_DONO = { papeis: ['adm', 'dono'] };
 const STATUS_ATIVOS = ['pendente', 'confirmado'];
@@ -317,6 +318,9 @@ function registrar(roteador) {
     if (!Number.isFinite(inicio)) throw new ErroHttp(400, 'Horário inválido.');
     const inicioIso = new Date(inicio).toISOString();
     const fim = inicio + servico.duracaoMin * horarios.MINUTO;
+
+    // "Não sou um robô" (depois de validar os campos, antes da parte cara: consultar o Google)
+    exigirAntiRobo(corpo);
 
     // Limite anti-abuso: no máximo 3 pedidos futuros abertos por telefone com o mesmo ADM
     const abertos = abrirBanco()

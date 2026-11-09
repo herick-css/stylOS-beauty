@@ -153,6 +153,8 @@ function registrar(roteador) {
     const contar = (sql) => banco.prepare(sql).get().total;
     return {
       urlPublica: urlPublicaAtual(),
+      urlPublicaManual: require('../banco').lerConfiguracaoGlobal('url_publica') || '',
+      tailscale: require('../servicos/tailscale').situacao(),
       totais: {
         adms: contar("SELECT COUNT(*) AS total FROM usuarios WHERE papel = 'adm'"),
         clientes: contar("SELECT COUNT(*) AS total FROM usuarios WHERE papel = 'usuario'"),
@@ -177,8 +179,15 @@ function registrar(roteador) {
       }
     }
     gravarConfiguracaoGlobal('url_publica', url || null);
-    registrarAuditoria(contexto.usuario.id, 'url-publica-alterada', url, contexto.ip);
-    return { urlPublica: url };
+    registrarAuditoria(contexto.usuario.id, 'url-publica-alterada', url || '(automático)', contexto.ip);
+    return { urlPublica: urlPublicaAtual() };
+  }, SO_DONO);
+
+  // ---------------- Verificar o Tailscale agora (botão do painel) ----------------
+  roteador.post('/api/dono/tailscale/verificar', async (contexto) => {
+    if (!seguranca.limitador.permitir(`tailscale:${contexto.usuario.id}`, 20, 10 * 60 * 1000)) throw new ErroHttp(429, 'Aguarde um pouco.');
+    const situacao = await require('../servicos/tailscale').verificarTailscale();
+    return { tailscale: situacao, urlPublica: urlPublicaAtual() };
   }, SO_DONO);
 
   // ---------------- Registro de atividades ----------------

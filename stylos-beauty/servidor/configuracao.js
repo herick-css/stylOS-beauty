@@ -79,6 +79,23 @@ const configuracao = {
   googleUrlToken: ler('GOOGLE_URL_TOKEN', 'https://oauth2.googleapis.com/token'),
   googleUrlApi: ler('GOOGLE_URL_API', 'https://www.googleapis.com/calendar/v3'),
   callmebotUrl: ler('CALLMEBOT_URL', 'https://api.callmebot.com/whatsapp.php'),
+  // Caminho do programa tailscale (vazio = procura sozinho). Os testes usam um falso.
+  tailscaleCaminho: ler('TAILSCALE_CAMINHO', ''),
+
+  googleUrlAutorizacao: ler('GOOGLE_URL_AUTORIZACAO', 'https://accounts.google.com/o/oauth2/v2/auth'),
+  googleUrlCertificados: ler('GOOGLE_URL_CERTIFICADOS', 'https://www.googleapis.com/oauth2/v3/certs'),
+
+  // Anti-robô: bits de dificuldade (17 ≈ 1 s num celular comum). Testes usam menos.
+  antiRoboDificuldade: Math.min(24, Math.max(4, Number(ler('ANTI_ROBO_DIFICULDADE', '17')))),
+
+  // Escudo anti-abuso (DDoS na aplicação)
+  escudo: {
+    pedidosPorSegundoPorIp: Number(ler('ESCUDO_PEDIDOS_POR_SEGUNDO', '15')),
+    rajadaPorIp: Number(ler('ESCUDO_RAJADA', '60')),
+    simultaneosPorIp: Number(ler('ESCUDO_SIMULTANEOS_POR_IP', '20')),
+    simultaneosTotal: Number(ler('ESCUDO_SIMULTANEOS_TOTAL', '250')),
+    pedidosPorMinutoModoDefesa: Number(ler('ESCUDO_LIMITE_MODO_DEFESA', '6000')),
+  },
 
   // Limites de tamanho
   limiteCorpoJson: 512 * 1024, // 512 KB para o conteúdo de uma página

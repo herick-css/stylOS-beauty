@@ -47,7 +47,10 @@ async function verificarSenha(senha, hashGuardado) {
     return false;
   }
   const partes = String(hashGuardado).split('$');
-  if (partes.length !== 6 || partes[0] !== 'scrypt') return false;
+  if (partes.length !== 6 || partes[0] !== 'scrypt') {
+    await verificarSenha(senha, null); // mesmo tempo de resposta (conta sem senha, ex.: criada pelo Google)
+    return false;
+  }
   const [, N, r, p, salBase64, hashBase64] = partes;
   const esperado = Buffer.from(hashBase64, 'base64');
   const calculado = await scryptAssincrono(String(senha).normalize('NFKC'), Buffer.from(salBase64, 'base64'), esperado.length, {
@@ -125,7 +128,8 @@ function lerSessao(requisicao) {
   const tokenHash = hashDoToken(token);
   const linha = banco.prepare(`
     SELECT s.expira_em, u.id, u.nome, u.email, u.telefone, u.papel, u.ativo,
-           u.deve_trocar_senha, u.tutorial_painel, u.tutorial_editor
+           u.deve_trocar_senha, u.tutorial_painel, u.tutorial_editor, u.google_sub,
+           (substr(u.senha_hash, 1, 1) <> '!') AS tem_senha
       FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
      WHERE s.token_hash = ?`).get(tokenHash);
   if (!linha) return null;
@@ -172,13 +176,23 @@ function limparSessoesExpiradas() {
 // REDE: IP real, HTTPS e proteção CSRF
 // ------------------------------------------------------------------
 
-/** IP do visitante. Atrás do túnel, o IP real vem num cabeçalho. */
+/**
+ * IP do visitante. Atrás do túnel, o IP real vem num cabeçalho:
+ *  - Cloudflare: CF-Connecting-IP (a Cloudflare sobrescreve o que vier do visitante);
+ *  - Tailscale Funnel: X-Forwarded-For. Usamos o ÚLTIMO endereço da lista,
+ *    que é o que o túnel (confiável) acrescentou — os anteriores podem ter
+ *    sido forjados pelo visitante.
+ * Só confiamos nesses cabeçalhos quando o servidor escuta apenas em 127.0.0.1.
+ */
 function ipDoCliente(requisicao) {
   if (configuracao.confiarProxy) {
     const cloudflare = requisicao.headers['cf-connecting-ip'];
-    if (cloudflare) return String(cloudflare).trim();
+    if (cloudflare) return String(cloudflare).trim().slice(0, 64);
     const encaminhado = requisicao.headers['x-forwarded-for'];
-    if (encaminhado) return String(encaminhado).split(',')[0].trim();
+    if (encaminhado) {
+      const lista = String(encaminhado).split(',').map((parte) => parte.trim()).filter(Boolean);
+      if (lista.length) return lista[lista.length - 1].slice(0, 64);
+    }
   }
   return requisicao.socket.remoteAddress || 'desconhecido';
 }
@@ -242,6 +256,12 @@ class LimitadorDeTentativas {
     lista.push(agora);
     this.registros.set(chave, lista);
     return true;
+  }
+
+  /** Quantas tentativas uma chave tem dentro da janela (sem registrar uma nova). */
+  contar(chave, janelaMs) {
+    const agora = Date.now();
+    return (this.registros.get(chave) || []).filter((momento) => agora - momento < janelaMs).length;
   }
 
   /** Apaga as tentativas de uma chave (ex.: depois de um login correto). */

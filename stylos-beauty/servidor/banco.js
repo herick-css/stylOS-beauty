@@ -113,6 +113,19 @@ const MIGRACOES = [
     ip          TEXT
   );
   `,
+  // ---------- versão 2: login com Google e recuperação de senha por e-mail ----------
+  `
+  ALTER TABLE usuarios ADD COLUMN google_sub TEXT;      -- identificador fixo da conta Google vinculada
+  CREATE UNIQUE INDEX idx_usuarios_google ON usuarios(google_sub) WHERE google_sub IS NOT NULL;
+
+  CREATE TABLE redefinicoes_senha (
+    token_hash  TEXT PRIMARY KEY,                       -- só o HASH do link enviado por e-mail
+    usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    expira_em   INTEGER NOT NULL,
+    usado_em    INTEGER
+  );
+  CREATE INDEX idx_redefinicoes_usuario ON redefinicoes_senha(usuario_id);
+  `,
 ];
 
 let bancoAberto = null;
