@@ -1,0 +1,21 @@
+# Serviço systemd (Linux) — liga o StylOS junto com o computador.
+# 1) Ajuste "User" e "WorkingDirectory" abaixo.
+# 2) sudo cp scripts/stylos.service /etc/systemd/system/
+# 3) sudo systemctl enable --now stylos
+[Unit]
+Description=StylOS Beauty
+After=network-online.target
+
+[Service]
+User=SEU_USUARIO
+WorkingDirectory=/home/SEU_USUARIO/stylos-beauty
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning servidor/principal.js
+Restart=always
+RestartSec=5
+# Endurecimento básico
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

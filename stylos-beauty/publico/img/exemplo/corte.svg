@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
+  <defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b3632"/><stop offset="1" stop-color="#1d1a18"/></linearGradient>
+  <linearGradient id="a" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e8e6e3"/><stop offset="1" stop-color="#9da1a6"/></linearGradient></defs>
+  <rect width="800" height="800" fill="url(#b)"/>
+  <circle cx="400" cy="400" r="280" fill="#ffffff" opacity=".04"/>
+  <g transform="rotate(-35 400 400)">
+    <path d="M390 120l20 0 6 330-32 0z" fill="url(#a)"/>
+    <path d="M410 140l40 0-26 310-20 0z" fill="url(#a)" opacity=".85"/>
+    <circle cx="355" cy="520" r="62" fill="none" stroke="#c9a46a" stroke-width="20"/>
+    <circle cx="465" cy="520" r="62" fill="none" stroke="#c9a46a" stroke-width="20"/>
+    <circle cx="410" cy="455" r="10" fill="#c9a46a"/>
+  </g>
+  <g transform="rotate(20 400 400) translate(170 600)">
+    <rect width="460" height="44" rx="10" fill="#c96f55"/>
+    <g fill="#c96f55">
+      <rect x="20" y="40" width="10" height="60" rx="4"/><rect x="50" y="40" width="10" height="60" rx="4"/><rect x="80" y="40" width="10" height="60" rx="4"/><rect x="110" y="40" width="10" height="60" rx="4"/><rect x="140" y="40" width="10" height="60" rx="4"/><rect x="170" y="40" width="10" height="60" rx="4"/><rect x="200" y="40" width="10" height="60" rx="4"/><rect x="230" y="40" width="10" height="60" rx="4"/><rect x="260" y="40" width="10" height="45" rx="4"/><rect x="290" y="40" width="10" height="45" rx="4"/><rect x="320" y="40" width="10" height="45" rx="4"/><rect x="350" y="40" width="10" height="45" rx="4"/><rect x="380" y="40" width="10" height="45" rx="4"/><rect x="410" y="40" width="10" height="45" rx="4"/>
+    </g>
+  </g>
+</svg>

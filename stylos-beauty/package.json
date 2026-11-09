@@ -1,0 +1,15 @@
+{
+  "name": "stylos-beauty",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StylOS Beauty — construtor de páginas e agendamento para salões de beleza (projeto da turma de beleza do Senac)",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning servidor/principal.js",
+    "iniciar": "node --disable-warning=ExperimentalWarning servidor/principal.js",
+    "testar": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"testes/*.test.js\""
+  }
+}
