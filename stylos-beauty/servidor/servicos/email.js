@@ -5,7 +5,7 @@
  *   Servidor: smtp.gmail.com   Porta: 465 (ou 587)
  *   Usuário: o Gmail que vai enviar   Senha: uma "SENHA DE APP" de 16 letras
  *   (exige verificação em duas etapas na conta Google; NÃO é a senha normal).
- *   Dica: crie um Gmail só para o sistema (ex.: stylos.salao@gmail.com).
+ *   Dica: crie um Gmail só para o sistema (ex.: stylosbeauty26@gmail.com).
  *   Limite do Gmail gratuito: ~500 e-mails por dia.
  *
  * A senha de app fica CRIPTOGRAFADA no banco.

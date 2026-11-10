@@ -31,6 +31,8 @@ const rotasArquivos = require('./rotas/arquivos');
 const rotasProtecao = require('./rotas/protecao');
 const rotasGoogleLogin = require('./rotas/google-login');
 const rotasRecuperacao = require('./rotas/recuperacao-senha');
+const rotasVideos = require('./rotas/videos');
+const servicoVideo = require('./servicos/video');
 
 // ------------------------------------------------------------------
 // Rotas da API
@@ -44,6 +46,7 @@ rotasArquivos.registrar(roteador);
 rotasProtecao.registrar(roteador);
 rotasRecuperacao.registrar(roteador);
 rotasGoogleLogin.registrar(roteador);
+rotasVideos.registrar(roteador);
 
 // O anti-robô fica mais difícil quando o escudo liga o modo de defesa
 antiRobo.definirFonteModoDefesa(() => escudo.modoDefesaAtivo());
@@ -138,13 +141,50 @@ function enviarNaoEncontrado(requisicao, resposta) {
   }
 }
 
+/**
+ * MIGRAÇÃO DE ENDEREÇO (ex.: do Tailscale para um domínio próprio na Cloudflare).
+ * Se o dono cadastrou um endereço público https que NÃO é do Tailscale, quem
+ * chegar pelo endereço antigo (*.ts.net) é levado para o novo — assim os links
+ * já divulgados continuam funcionando enquanto o Funnel estiver ligado.
+ * (Redirecionamento temporário 302: se voltar atrás, os navegadores não "decoram".)
+ */
+function destinoDeMigracao(requisicao, endereco) {
+  const hostPedido = String(requisicao.headers['x-forwarded-host'] || requisicao.headers.host || '').toLowerCase();
+  if (!hostPedido.endsWith('.ts.net')) return null;
+  const { lerConfiguracaoGlobal } = require('./banco');
+  const novo = lerConfiguracaoGlobal('url_publica') || configuracao.urlPublica;
+  if (!novo || !novo.startsWith('https://')) return null;
+  try {
+    const novoHost = new URL(novo).host.toLowerCase();
+    if (novoHost.endsWith('.ts.net') || novoHost === hostPedido) return null;
+  } catch {
+    return null;
+  }
+  return `${novo}${endereco.pathname}${endereco.search}`;
+}
+
 function tratarTela(requisicao, resposta, endereco) {
   const caminho = endereco.pathname;
+
+  const migracao = destinoDeMigracao(requisicao, endereco);
+  if (migracao) {
+    redirecionar(resposta, migracao);
+    return;
+  }
 
   // Fotos enviadas pelos ADMs
   const arquivoEnviado = caminho.match(/^\/arquivos\/([a-f0-9]{32}\.(?:webp|jpg|png))$/);
   if (arquivoEnviado) {
     if (!servirArquivo(requisicao, resposta, configuracao.pastaUploads, arquivoEnviado[1], 'arquivo', 31536000)) {
+      enviarNaoEncontrado(requisicao, resposta);
+    }
+    return;
+  }
+
+  // Vídeos otimizados: /arquivos/videos/<id>/1080.mp4 | 720.mp4 | poster.jpg
+  const arquivoDeVideo = caminho.match(/^\/arquivos\/videos\/([a-f0-9]{32})\/(1080\.mp4|720\.mp4|poster\.jpg)$/);
+  if (arquivoDeVideo) {
+    if (!servirArquivo(requisicao, resposta, servicoVideo.pastaDoVideo(arquivoDeVideo[1]), arquivoDeVideo[2], 'arquivo', 31536000)) {
       enviarNaoEncontrado(requisicao, resposta);
     }
     return;
@@ -253,6 +293,11 @@ function iniciar() {
 
   const servidor = criarServidor();
   const verificacaoTailscale = require('./servicos/tailscale').iniciarVerificacaoPeriodica();
+  // Vídeos: procura o FFmpeg e retoma otimizações interrompidas (ex.: o notebook desligou)
+  servicoVideo.detectarFerramentas().then((ferramentas) => {
+    if (ferramentas.indisponivel) console.log(`  [vídeos] ${ferramentas.indisponivel}`);
+    servicoVideo.retomarPendentes();
+  });
   servidor.listen(configuracao.porta, configuracao.host, async () => {
     await verificacaoTailscale; // para já mostrar o endereço público na tela
     const linha = '='.repeat(64);

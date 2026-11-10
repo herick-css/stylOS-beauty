@@ -34,6 +34,9 @@
     secaoSelecionada: null,
     dispositivo: 'computador',
     agendaPrevia: { ativa: true, servicos: [] },
+    videos: new Map(),          // id → situação do vídeo (na fila, otimizando, pronto...)
+    ferramentasVideo: { disponivel: false, mensagem: '' },
+    enviosEmAndamento: 0,
     previaPronta: false,
     alteracoesPendentes: false,
     salvando: false,
@@ -106,7 +109,7 @@
   }
 
   window.addEventListener('beforeunload', (evento) => {
-    if (estado.alteracoesPendentes || estado.salvando) {
+    if (estado.alteracoesPendentes || estado.salvando || estado.enviosEmAndamento > 0) {
       evento.preventDefault();
       evento.returnValue = '';
     }
@@ -122,6 +125,7 @@
       conteudo: estado.conteudo,
       agenda: estado.agendaPrevia,
       secaoSelecionada: estado.secaoSelecionada,
+      videosPendentes: [...estado.videos.values()].filter((video) => video.status !== 'pronto').map((video) => video.id),
     }, location.origin);
   }
 
@@ -512,7 +516,13 @@
         break;
       }
       case 'imagem':
-        caixa.append(el('span', { classe: 'campo__rotulo' }, [campo.rotulo, campo.obrigatorio ? el('span', { classe: 'texto-suave', texto: ' *' }) : null]), controleImagem(campo, dados, idCampo, aoAlterar));
+      case 'midia':
+        caixa.append(
+          el('span', { classe: 'campo__rotulo' }, [campo.rotulo, campo.obrigatorio ? el('span', { classe: 'texto-suave', texto: ' *' }) : null]),
+          controleMidia(campo, dados, idCampo, aoAlterar),
+        );
+        // (append(null) escreveria "null" na tela, por isso o "if")
+        if (campo.dica) caixa.append(el('span', { classe: 'campo__dica', texto: campo.dica }));
         break;
       case 'lista':
         caixa.append(el('span', { classe: 'campo__rotulo', texto: `${campo.rotulo} (${(dados[campo.chave] || []).length}/${campo.max})` }), controleLista(campo, dados, idCampo, aoAlterar));
@@ -599,79 +609,264 @@
     return resposta.url;
   }
 
-  function controleImagem(campo, dados, idCampo, aoAlterar) {
+  // ---------- Vídeos ----------
+  const formatarMb = (bytes) => `${(bytes / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: bytes < 10485760 ? 1 : 0 })} MB`;
+  const formatarDuracao = (segundos) => `${Math.floor(segundos / 60)}:${String(Math.round(segundos % 60)).padStart(2, '0')}`;
+
+  /** Lista os vídeos do ADM (e se o FFmpeg está disponível). */
+  async function carregarVideos() {
+    try {
+      const dados = await api('/api/adm/videos');
+      estado.ferramentasVideo = { disponivel: dados.disponivel, mensagem: dados.mensagem, tamanhoMaximoMb: dados.tamanhoMaximoMb };
+      estado.videos = new Map(dados.videos.map((video) => [video.id, video]));
+      acompanharVideos();
+    } catch {
+      estado.ferramentasVideo = { disponivel: false, mensagem: 'Não foi possível verificar os vídeos.' };
+    }
+  }
+
+  /** Texto + barra que mostram a situação de um vídeo. */
+  function conteudoEstadoVideo(video) {
+    if (!video) return [el('span', { texto: 'Vídeo não encontrado. Escolha outro.' })];
+    const barra = (porcento) => {
+      const preenchida = el('span');
+      preenchida.style.width = `${porcento}%`;
+      return el('div', { classe: 'barra-envio', role: 'progressbar', 'aria-valuenow': String(porcento), 'aria-valuemin': '0', 'aria-valuemax': '100' }, [preenchida]);
+    };
+    if (video.status === 'na_fila') return [el('strong', { texto: `Na fila para otimizar${video.posicaoNaFila > 1 ? ` (posição ${video.posicaoNaFila})` : ''}…` }), barra(0)];
+    if (video.status === 'processando') {
+      return [el('strong', { texto: `Otimizando o vídeo… ${video.progresso}%` }), barra(video.progresso),
+        el('span', { texto: 'Pode continuar editando. Publique quando terminar.' })];
+    }
+    if (video.status === 'erro') return [el('strong', { texto: 'Não foi possível usar este vídeo.' }), el('span', { texto: video.mensagem })];
+    const economia = video.tamanhoOriginal ? Math.max(0, Math.round((1 - video.tamanhoFinal / video.tamanhoOriginal) * 100)) : 0;
+    return [
+      el('strong', { texto: `✓ Pronto${economia ? `: ${economia}% mais leve` : ''}` }),
+      el('span', { texto: `${formatarMb(video.tamanhoOriginal)} → ${formatarMb(video.tamanhoFinal)} no computador · ${formatarMb(video.tamanhoMovel)} no celular · ${formatarDuracao(video.duracao)}` }),
+    ];
+  }
+
+  function classeEstadoVideo(video) {
+    return `estado-video ${video && video.status === 'erro' ? 'estado-video--erro' : video && video.status === 'pronto' ? 'estado-video--pronto' : ''}`;
+  }
+
+  /** Atualiza na tela (sem redesenhar o formulário, para não tirar o foco de quem digita). */
+  function atualizarEstadosNaTela(video) {
+    document.querySelectorAll(`[data-estado-video="${video.id}"]`).forEach((caixa) => {
+      caixa.className = classeEstadoVideo(video);
+      trocar(caixa, ...conteudoEstadoVideo(video));
+    });
+    if (video.status === 'pronto') {
+      document.querySelectorAll(`[data-previa-video="${video.id}"]`).forEach((previa) => {
+        trocar(previa, el('img', { src: `${video.url}/poster.jpg`, alt: '' }), el('span', { classe: 'selo-video-mini' }, [icone('play', 12), 'vídeo']));
+      });
+    }
+  }
+
+  /** Enquanto houver vídeo na fila/otimizando, pergunta ao servidor a cada 1,5 s. */
+  let temporizadorVideos = null;
+  function acompanharVideos() {
+    if (temporizadorVideos) return;
+    const verificar = async () => {
+      const pendentes = [...estado.videos.values()].filter((video) => ['na_fila', 'processando'].includes(video.status));
+      if (!pendentes.length) { temporizadorVideos = null; return; }
+      let terminouAlgum = false;
+      for (const video of pendentes) {
+        try {
+          const atual = await api(`/api/adm/videos/${video.id}`);
+          estado.videos.set(atual.id, atual);
+          atualizarEstadosNaTela(atual);
+          if (atual.status === 'pronto' || atual.status === 'erro') {
+            terminouAlgum = true;
+            avisar(atual.status === 'pronto' ? 'Vídeo otimizado e pronto!' : 'Um vídeo deu erro ao otimizar.', atual.status === 'pronto' ? 'sucesso' : 'erro');
+          }
+        } catch { /* tenta de novo na próxima volta */ }
+      }
+      if (terminouAlgum) enviarParaPrevia();
+      temporizadorVideos = setTimeout(verificar, 1500);
+    };
+    temporizadorVideos = setTimeout(verificar, 1500);
+  }
+
+  /**
+   * Envia um vídeo em pedaços de 4 MB (com nova tentativa se a internet falhar)
+   * e pede ao servidor para otimizar. aoProgredir(porcentagem do envio).
+   */
+  async function enviarVideo(arquivo, aoProgredir) {
+    const limite = (estado.ferramentasVideo.tamanhoMaximoMb || 500) * 1048576;
+    if (!/^video\//.test(arquivo.type) && !/\.(mp4|mov|m4v|webm|mkv|avi|3gp)$/i.test(arquivo.name)) throw new Error('Escolha um arquivo de vídeo (MP4, MOV, WEBM...).');
+    if (arquivo.size > limite) throw new Error(`Vídeo grande demais (${formatarMb(arquivo.size)}). O limite é ${formatarMb(limite)}.`);
+    estado.enviosEmAndamento += 1;
+    try {
+      const { id, tamanhoPedaco } = await api('/api/adm/videos', { corpo: { nome: arquivo.name, tamanho: arquivo.size } });
+      let enviado = 0;
+      while (enviado < arquivo.size) {
+        const pedaco = arquivo.slice(enviado, enviado + tamanhoPedaco);
+        let tentativas = 0;
+        for (;;) {
+          try {
+            const resposta = await api(`/api/adm/videos/${id}/pedaco?inicio=${enviado}`, { metodo: 'PUT', corpoBinario: pedaco, tipoConteudo: 'application/octet-stream' });
+            enviado = resposta.recebido;
+            break;
+          } catch (erro) {
+            if (erro.status === 409 && erro.dados && Number.isInteger(erro.dados.recebido)) { enviado = erro.dados.recebido; break; }
+            tentativas += 1;
+            if (tentativas >= 4 || (erro.status && erro.status < 500 && erro.status !== 429)) throw erro;
+            await new Promise((resolver) => setTimeout(resolver, 1500 * tentativas));
+          }
+        }
+        aoProgredir(Math.round((enviado / arquivo.size) * 100));
+      }
+      const situacao = await api(`/api/adm/videos/${id}/concluir`, { corpo: {} });
+      estado.videos.set(situacao.id, situacao);
+      acompanharVideos();
+      return situacao;
+    } finally {
+      estado.enviosEmAndamento -= 1;
+    }
+  }
+
+  /** Miniatura do campo: foto, capa do vídeo ou ícone. */
+  function previaDaMidia(valor) {
+    const enderecos = Esquemas.enderecosDoVideo(valor);
+    if (enderecos) {
+      const video = estado.videos.get(enderecos.id);
+      return el('span', { classe: 'campo-imagem__previa campo-imagem__previa--video', dados: { previaVideo: enderecos.id } }, video && video.status === 'pronto'
+        ? [el('img', { src: enderecos.capa, alt: '' }), el('span', { classe: 'selo-video-mini' }, [icone('play', 12), 'vídeo'])]
+        : [icone('filme', 26)]);
+    }
+    return valor ? el('img', { classe: 'campo-imagem__previa', src: valor, alt: 'Foto escolhida' }) : el('span', { classe: 'campo-imagem__previa' }, [icone('imagem', 26)]);
+  }
+
+  /** Campo "Foto ou vídeo" (ou só foto / só vídeo, conforme campo.aceita). */
+  function controleMidia(campo, dados, idCampo, aoAlterar) {
     const valor = dados[campo.chave];
-    const previa = valor
-      ? el('img', { classe: 'campo-imagem__previa', src: valor, alt: 'Foto escolhida' })
-      : el('span', { classe: 'campo-imagem__previa' }, [icone('imagem', 26)]);
-    const seletorArquivo = el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', id: idCampo, classe: 'so-leitor' });
-    const botaoEnviar = el('label', { classe: 'botao botao--secundario botao--pequeno', for: idCampo }, [icone('enviar', 16), valor ? 'Trocar' : 'Enviar foto']);
-    seletorArquivo.addEventListener('change', async () => {
-      const arquivo = seletorArquivo.files[0];
+    const aceitaFoto = campo.tipo === 'imagem' || campo.aceita !== 'video';
+    const aceitaVideo = campo.tipo === 'midia';
+    const enderecos = Esquemas.enderecosDoVideo(valor);
+    const areaEstado = el('div', { classe: 'campo-imagem__estado' });
+    const definir = (url) => { dados[campo.chave] = url; aoAlterar(); desenharFormularioSecao(); };
+
+    // Foto: reduzida no navegador (máx. 1920 px, WEBP)
+    const seletorFoto = el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', id: `${idCampo}-foto`, classe: 'so-leitor' });
+    const botaoFoto = el('label', { classe: 'botao botao--secundario botao--pequeno', for: `${idCampo}-foto` }, [icone('imagem', 16), 'Foto']);
+    seletorFoto.addEventListener('change', async () => {
+      const arquivo = seletorFoto.files[0];
       if (!arquivo) return;
-      botaoEnviar.classList.add('carregando');
+      botaoFoto.classList.add('carregando');
       try {
-        dados[campo.chave] = await enviarFoto(arquivo);
-        aoAlterar();
-        desenharFormularioSecao();
+        definir(await enviarFoto(arquivo));
         avisar('Foto enviada!');
       } catch (erro) {
         avisar(erro.message, 'erro', 6000);
-        botaoEnviar.classList.remove('carregando');
+        botaoFoto.classList.remove('carregando');
       }
     });
+
+    // Vídeo: enviado em pedaços e otimizado no servidor
+    const seletorVideo = el('input', { type: 'file', accept: 'video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi,.3gp', id: `${idCampo}-video`, classe: 'so-leitor', disabled: estado.ferramentasVideo.disponivel ? null : true });
+    const botaoVideo = estado.ferramentasVideo.disponivel
+      ? el('label', { classe: 'botao botao--secundario botao--pequeno', for: `${idCampo}-video` }, [icone('filme', 16), 'Vídeo'])
+      : el('button', { classe: 'botao botao--secundario botao--pequeno', type: 'button', title: estado.ferramentasVideo.mensagem, aoClick: () => avisar(estado.ferramentasVideo.mensagem || 'Vídeos indisponíveis.', 'erro', 8000) }, [icone('filme', 16), 'Vídeo']);
+    seletorVideo.addEventListener('change', async () => {
+      const arquivo = seletorVideo.files[0];
+      if (!arquivo) return;
+      const preenchida = el('span');
+      const textoEnvio = el('strong', { texto: 'Enviando o vídeo… 0%' });
+      trocar(areaEstado, el('div', { classe: 'estado-video' }, [textoEnvio, el('div', { classe: 'barra-envio' }, [preenchida]), el('span', { texto: 'Não feche esta página até o envio terminar.' })]));
+      botaoVideo.classList.add('carregando');
+      try {
+        const situacao = await enviarVideo(arquivo, (porcento) => {
+          textoEnvio.textContent = `Enviando o vídeo… ${porcento}%`;
+          preenchida.style.width = `${porcento}%`;
+        });
+        definir(situacao.url);
+        enviarParaPrevia();
+        avisar('Vídeo enviado! Agora ele está sendo otimizado.');
+      } catch (erro) {
+        botaoVideo.classList.remove('carregando');
+        trocar(areaEstado, el('div', { classe: 'estado-video estado-video--erro' }, [el('strong', { texto: 'O envio não deu certo.' }), el('span', { texto: erro.message })]));
+      }
+    });
+
+    if (enderecos) {
+      const video = estado.videos.get(enderecos.id);
+      areaEstado.append(el('div', { classe: classeEstadoVideo(video), dados: { estadoVideo: enderecos.id }, 'aria-live': 'polite' }, conteudoEstadoVideo(video)));
+    }
+
     return el('div', { classe: 'campo-imagem' }, [
-      previa,
+      previaDaMidia(valor),
       el('div', { classe: 'campo-imagem__acoes' }, [
-        seletorArquivo,
-        botaoEnviar,
-        el('button', { classe: 'botao botao--fantasma botao--pequeno', type: 'button', aoClick: () => escolherDaGaleria((url) => { dados[campo.chave] = url; aoAlterar(); desenharFormularioSecao(); }) }, [icone('galeria', 16), 'Minhas fotos']),
-        valor ? el('button', { classe: 'botao botao--fantasma botao--pequeno', type: 'button', 'aria-label': 'Remover foto', aoClick: () => { dados[campo.chave] = ''; aoAlterar(); desenharFormularioSecao(); } }, [icone('fechar', 16)]) : null,
+        aceitaFoto ? seletorFoto : null,
+        aceitaFoto ? botaoFoto : null,
+        aceitaVideo ? seletorVideo : null,
+        aceitaVideo ? botaoVideo : null,
+        el('button', {
+          classe: 'botao botao--fantasma botao--pequeno', type: 'button',
+          aoClick: () => escolherDaGaleria(definir, { fotos: aceitaFoto, videos: aceitaVideo }),
+        }, [icone('galeria', 16), 'Minhas mídias']),
+        valor ? el('button', { classe: 'botao botao--fantasma botao--pequeno', type: 'button', 'aria-label': 'Remover', title: 'Remover', aoClick: () => definir('') }, [icone('fechar', 16)]) : null,
       ]),
+      areaEstado,
     ]);
   }
 
   const ILUSTRACOES = ['capa', 'salao', 'corte', 'coloracao', 'tratamento', 'penteado', 'unhas', 'barba'].map((nome) => `/img/exemplo/${nome}.svg`);
 
-  async function escolherDaGaleria(aoEscolher) {
+  /** Janela "Minhas mídias": fotos enviadas, vídeos e ilustrações de exemplo. */
+  async function escolherDaGaleria(aoEscolher, { fotos = true, videos = false } = {}) {
     let arquivos = [];
     try {
-      arquivos = (await api('/api/adm/arquivos')).arquivos;
+      if (fotos) arquivos = (await api('/api/adm/arquivos')).arquivos;
+      if (videos) await carregarVideos();
     } catch (erro) {
       avisar(erro.message, 'erro');
     }
-    const miniatura = (url, podeApagar) => {
-      const botao = el('button', {
-        classe: 'galeria__item', type: 'button', 'aria-label': 'Usar esta foto',
-        aoClick: () => { aoEscolher(url); caixa.fechar(); },
-      }, [el('img', { classe: 'campo-imagem__previa', src: url, alt: '', loading: 'lazy' })]);
-      if (!podeApagar) return botao;
-      return el('div', { classe: 'copiavel' }, [botao, el('button', {
-        classe: 'botao botao--fantasma botao--icone botao--pequeno', type: 'button', 'aria-label': 'Apagar foto',
-        aoClick: async () => {
-          if (!(await confirmar('Apagar esta foto do sistema?', { perigo: true, botao: 'Apagar' }))) return;
-          try {
-            await api(`/api/adm/arquivos/${url.split('/').pop()}`, { metodo: 'DELETE' });
-            caixa.fechar();
-            avisar('Foto apagada.');
-          } catch (erro) {
-            avisar(erro.message, 'erro', 6000);
-          }
-        },
-      }, [icone('lixeira', 14)])]);
+    const apagar = async (caminhoApi, texto) => {
+      if (!(await confirmar(texto, { perigo: true, botao: 'Apagar' }))) return;
+      try {
+        await api(caminhoApi, { metodo: 'DELETE' });
+        caixa.fechar();
+        avisar('Apagado.');
+      } catch (erro) {
+        avisar(erro.message, 'erro', 6000);
+      }
     };
-    const grade = (itens, podeApagar) => el('div', { classe: 'escolhas' }, itens.map((url) => miniatura(url, podeApagar)));
+    const item = ({ url, miniatura, selo, rodape, desativado, aoApagar }) => el('div', { classe: 'item-midia' }, [
+      el('button', {
+        classe: 'galeria__item', type: 'button', disabled: desativado ? true : null, 'aria-label': 'Usar este item',
+        aoClick: () => { aoEscolher(url); caixa.fechar(); },
+      }, [miniatura ? el('img', { src: miniatura, alt: '', loading: 'lazy' }) : el('span', { classe: 'campo-imagem__previa' }, [icone('filme', 26)])]),
+      selo ? el('span', { classe: 'item-midia__selo' }, [icone('play', 11), selo]) : null,
+      el('div', { classe: 'item-midia__rodape' }, [el('span', { texto: rodape || '' }), aoApagar ? el('button', { classe: 'botao botao--fantasma botao--icone botao--pequeno', type: 'button', 'aria-label': 'Apagar', aoClick: aoApagar }, [icone('lixeira', 14)]) : null]),
+    ]);
+    const listaVideos = [...estado.videos.values()];
+    const nomesStatus = { na_fila: 'na fila', processando: 'otimizando', erro: 'erro' };
     const caixa = janela({
-      titulo: 'Escolher foto',
+      titulo: 'Minhas mídias',
       icone: 'galeria',
       larga: true,
       conteudo: [
-        el('h3', { texto: 'Fotos que você enviou' }),
-        arquivos.length ? grade(arquivos.map((arquivo) => arquivo.url), true) : el('p', { classe: 'texto-suave', texto: 'Nenhuma foto enviada ainda. Use "Enviar foto".' }),
-        el('p'),
-        el('h3', { texto: 'Ilustrações de exemplo' }),
-        el('p', { classe: 'texto-suave texto-pequeno', texto: 'Use só enquanto não tiver fotos reais do salão.' }),
-        grade(ILUSTRACOES, false),
+        videos ? el('h3', { texto: 'Vídeos' }) : null,
+        videos ? (listaVideos.length
+          ? el('div', { classe: 'galeria-midias' }, listaVideos.map((video) => item({
+              url: video.url,
+              miniatura: video.status === 'pronto' ? `${video.url}/poster.jpg` : null,
+              selo: video.status === 'pronto' ? formatarDuracao(video.duracao) : nomesStatus[video.status],
+              rodape: video.status === 'pronto' ? formatarMb(video.tamanhoFinal) : video.status === 'processando' ? `${video.progresso}%` : '',
+              desativado: video.status === 'erro',
+              aoApagar: () => apagar(`/api/adm/videos/${video.id}`, 'Apagar este vídeo do sistema?'),
+            })))
+          : el('p', { classe: 'texto-suave', texto: estado.ferramentasVideo.disponivel ? 'Nenhum vídeo enviado ainda. Use o botão "Vídeo".' : estado.ferramentasVideo.mensagem })) : null,
+        videos && fotos ? el('p') : null,
+        fotos ? el('h3', { texto: 'Fotos que você enviou' }) : null,
+        fotos ? (arquivos.length
+          ? el('div', { classe: 'galeria-midias' }, arquivos.map((arquivo) => item({ url: arquivo.url, miniatura: arquivo.url, rodape: formatarMb(arquivo.tamanho), aoApagar: () => apagar(`/api/adm/arquivos/${arquivo.url.split('/').pop()}`, 'Apagar esta foto do sistema?') })))
+          : el('p', { classe: 'texto-suave', texto: 'Nenhuma foto enviada ainda. Use o botão "Foto".' })) : null,
+        fotos ? el('p') : null,
+        fotos ? el('h3', { texto: 'Ilustrações de exemplo' }) : null,
+        fotos ? el('p', { classe: 'texto-suave texto-pequeno', texto: 'Use só enquanto não tiver fotos reais do salão.' }) : null,
+        fotos ? el('div', { classe: 'galeria-midias' }, ILUSTRACOES.map((url) => item({ url, miniatura: url }))) : null,
       ],
     });
   }
@@ -810,6 +1005,7 @@
     estado.titulo = pagina.titulo;
     estado.conteudo = Esquemas.normalizarConteudo(pagina.conteudo);
     if (agenda) estado.agendaPrevia = { ativa: true, servicos: agenda.config.servicos };
+    await carregarVideos();
     document.title = `${pagina.titulo} — Editor StylOS`;
 
     desenharTopo();

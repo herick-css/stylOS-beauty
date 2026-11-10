@@ -24,6 +24,8 @@ pedidos de horário no WhatsApp**, conferidos com a Google Agenda.
 2. Dê dois cliques em **`INSTALAR-WINDOWS.bat`**. Ele:
    - instala o **Node.js LTS** se faltar (depois peça para rodar de novo);
    - oferece instalar o **Tailscale** (túnel para publicar na internet);
+   - oferece instalar o **FFmpeg** (necessário para os **vídeos**: é ele que
+     otimiza cada vídeo enviado);
    - oferece **ligar o StylOS junto com o Windows**;
    - oferece **impedir o PC de dormir** na tomada.
 3. Dê dois cliques em **`INICIAR-STYLOS.bat`**. Uma janela preta abre:
@@ -40,7 +42,8 @@ pedidos de horário no WhatsApp**, conferidos com a Google Agenda.
 3. No painel, siga o tutorial. Depois:
    - **Sistema e segurança → Publicação na internet**: confira se aparece
      "No ar" com o endereço `https://<notebook>.<rede>.ts.net` (detectado sozinho);
-   - **Sistema e segurança → E-mail**: Gmail + senha de app, para o "Esqueci minha senha";
+   - **Sistema e segurança → E-mail**: o Gmail do sistema (`stylosbeauty26@gmail.com`)
+     já vem preenchido; cole a **senha de app** e clique em "Enviar teste";
    - **Integração Google**: agenda dos ADMs e "Entrar com Google" (guias na tela);
    - **Administradores → Cadastrar ADM**: o sistema gera uma senha temporária
      e uma mensagem pronta para enviar à pessoa.
@@ -55,14 +58,27 @@ leva até ele é o túnel: sem abrir portas no roteador e sem mostrar o seu IP.
 > botão "Verificar de novo" em *Sistema e segurança*) e passa a usá-lo em todos os links.
 
 **Tailscale Funnel** (grátis para uso não comercial, sem domínio):
+dê dois cliques em **`CONFIGURAR-TAILSCALE.bat`**. Ele instala o Tailscale,
+faz o login, liga o Funnel e mostra o endereço. Pode rodar de novo quantas
+vezes quiser: confere o que já está pronto e só faz o que falta. Se parar
+no meio, a janela diz o que fazer.
+
+Na primeira vez, o Tailscale mostra **dois links**: um de **login** e outro
+para **habilitar o Funnel** (botão "Enable"). Abra os dois (CTRL + clique).
+
+Pelo terminal, os comandos equivalentes são:
 ```
 tailscale up                 (login uma vez)
 tailscale funnel --bg 3000   (publica; se pedir, aprove o link que aparece)
 tailscale funnel status      (mostra o endereço https://...ts.net)
 ```
-No `.env`, coloque `TUNEL=tailscale` para o `INICIAR-STYLOS.bat` reativar sozinho.
+O `CONFIGURAR-TAILSCALE.bat` já grava `TUNEL=tailscale` no `.env`, para o
+`INICIAR-STYLOS.bat` religar o túnel sozinho (na mesma `PORTA` do `.env`).
 
-**Cloudflare Tunnel** (grátis, uso comercial, precisa de domínio próprio):
+**Cloudflare Tunnel** (grátis, uso comercial, precisa de domínio próprio).
+Siga o guia **[MIGRAR-PARA-CLOUDFLARE.md](MIGRAR-PARA-CLOUDFLARE.md)** e use o
+`CONFIGURAR-CLOUDFLARE.bat`. Os links antigos `.ts.net` redirecionam sozinhos.
+Alternativa manual (sem instalar como serviço):
 crie um túnel no painel Zero Trust da Cloudflare apontando para
 `http://localhost:3000`, copie o token e coloque no `.env`:
 ```
@@ -81,8 +97,16 @@ As páginas públicas também permitem ser embutidas em `*.canva.site`.
    serviços com duração, Google Agenda, folgas.
 2. **Minhas páginas → Editar**: clique numa seção, edite, veja a prévia
    em computador, tablet ou celular. Use `*palavra*` para destacar no título.
-3. **Publicar**: o sistema confere as boas práticas e gera o link.
-4. **Agendamentos**: confirme, cancele, avise a cliente pelo WhatsApp ou
+3. **Vídeos**: nos campos "Foto ou vídeo" (cabeçalho, sobre, destaque,
+   serviços, galeria) e na seção Vídeo, toque em **Vídeo** e escolha o
+   arquivo do celular/câmera (MP4, MOV do iPhone, WEBM, MKV...). O envio é
+   em partes e mostra a porcentagem; depois o sistema **otimiza sozinho**
+   (alguns segundos a poucos minutos) e mostra quanto ficou mais leve. Pode
+   continuar editando enquanto isso. Para vídeo **no fundo do cabeçalho**,
+   escolha "Foto/vídeo ocupando o fundo" em *Arrumação*. Vídeos já enviados
+   ficam em **Minhas mídias** para reaproveitar.
+4. **Publicar**: o sistema confere as boas práticas e gera o link.
+5. **Agendamentos**: confirme, cancele, avise a cliente pelo WhatsApp ou
    crie o evento na sua Google Agenda com um clique.
 
 ## 6. Segurança no dia a dia
@@ -100,6 +124,9 @@ As páginas públicas também permitem ser embutidas em `*.canva.site`.
 ```
 stylos-beauty/
 ├─ INSTALAR-WINDOWS.bat / INICIAR-STYLOS.bat   ← dois cliques
+├─ CONFIGURAR-TAILSCALE.bat ← liga o link público (pode rodar sozinho, de novo)
+├─ CONFIGURAR-CLOUDFLARE.bat + MIGRAR-PARA-CLOUDFLARE.md  ← só quando tiver domínio
+├─ marca/                  ← foto de perfil do Gmail (PNG e SVG editável)
 ├─ .env.exemplo            ← configurações opcionais (copie para .env)
 ├─ servidor/
 │  ├─ principal.js         ← ponto de entrada; rotas de telas; segurança por pedido
@@ -110,7 +137,9 @@ stylos-beauty/
 │  ├─ rotas/               ← autenticacao, dono, paginas, agenda, arquivos
 │  ├─ rotas/protecao.js, google-login.js, recuperacao-senha.js   ← versão 2
 │  └─ servicos/            ← horarios, google-agenda, manutencao (backup/LGPD), dados-iniciais,
-│                             anti-robo, escudo (anti-DDoS), email (SMTP), tailscale
+│                             anti-robo, escudo (anti-DDoS), email (SMTP), tailscale,
+│                             video (otimização com FFmpeg)  ← versão 4
+│  └─ rotas/videos.js      ← envio em partes, situação, apagar  ← versão 4
 ├─ publico/                ← tudo que o navegador recebe
 │  ├─ *.html               ← telas
 │  ├─ css/site.css         ← páginas dos salões e os 5 temas
@@ -121,11 +150,14 @@ stylos-beauty/
 │     ├─ agendamento-widget.js
 │     ├─ painel.js, editor.js, tour.js, comum.js, ...
 ├─ testes/                 ← npm run testar
-└─ dados/                  ← CRIADA SOZINHA: banco, fotos, backups, segredo (NUNCA versionar)
+└─ dados/                  ← CRIADA SOZINHA: banco, fotos, vídeos, backups, segredo (NUNCA versionar)
+   └─ uploads/videos/<id>/ ← 1080.mp4 (computador), 720.mp4 (celular), poster.jpg (capa)
 ```
 
 ## 8. Para quem for mexer no código
-- **Rodar os testes:** `npm run testar` (85 testes, não precisa de internet).
+- **Rodar os testes:** `npm run testar` (103 testes, não precisa de internet;
+  os 14 de vídeo usam o FFmpeg de verdade e são pulados se ele não estiver
+  instalado).
 - **Nova seção:** crie o tipo em `TIPOS_SECAO` (`esquemas-secoes.js`) e a
   função `desenhar.<tipo>` em `renderizador.js`. O formulário do editor e a
   validação do servidor saem sozinhos do esquema.
@@ -142,7 +174,9 @@ stylos-beauty/
 ## 9. Problemas comuns
 | Sintoma | Solução |
 |---|---|
-| Link da página sai como `http://localhost...` | O Funnel não está ligado. Rode `tailscale funnel --bg 3000` e clique em "Verificar de novo" (*Sistema e segurança*) |
+| Link da página sai como `http://localhost...` | O Funnel não está ligado. Rode o `CONFIGURAR-TAILSCALE.bat` e clique em "Verificar de novo" (*Sistema e segurança*) |
+| Instalador fechou ou deu erro na parte do Tailscale | Era um erro do instalador antigo (corrigido). Rode só o `CONFIGURAR-TAILSCALE.bat` |
+| `CONFIGURAR-TAILSCALE.bat` para em "[3/3] Funnel" | Abra o link de habilitar o Funnel e clique em "Enable"; confira "HTTPS Certificates" em login.tailscale.com/admin/dns. Rede de escola/empresa pode bloquear: teste no 4G |
 | "Criar conta" leva a "Você já está conectado" | Você está logado (ex.: como dono). Saia ou use uma janela anônima para testar como cliente |
 | "Muitos pedidos. Aguarde" | O escudo bloqueou o endereço. O dono pode clicar em "Desbloquear todos" |
 | "Entrar com Google" dá erro de redirecionamento | O URI de redirecionamento no Google Cloud precisa ser EXATAMENTE o mostrado no painel (com `https://...ts.net`) |
@@ -151,5 +185,8 @@ stylos-beauty/
 | `EADDRINUSE` | Já existe um StylOS aberto (feche a outra janela) ou mude `PORTA` no `.env` (e no túnel) |
 | Página fora do ar | O PC está ligado? A janela preta está aberta? O túnel está ativo (`tailscale funnel status`)? |
 | "Agenda não encontrada ou não compartilhada" | Refaça o compartilhamento com o e-mail da integração, permissão "ver apenas livre/ocupado" |
+| Botão "Vídeo" apagado / "FFmpeg não encontrado" | Rode o `INSTALAR-WINDOWS.bat` e aceite o FFmpeg (ou `winget install Gyan.FFmpeg`). Feche e abra o `INICIAR-STYLOS.bat` e clique em "Verificar de novo" no cartão **Vídeos** (*Sistema e segurança*) |
+| Vídeo fica "na fila" muito tempo | Ele é otimizado um de cada vez, em prioridade baixa. Vídeos longos em 4K num notebook simples podem levar alguns minutos; não feche a janela preta |
+| "Vídeo muito longo" / "muito grande" | Limites padrão: 10 minutos e 500 MB. Para mudar, use `VIDEO_DURACAO_MAXIMA_SEG` e `VIDEO_TAMANHO_MAXIMO_MB` no `.env` |
 | Esqueci a senha do dono | No computador do servidor, abra um terminal na pasta e rode `node --disable-warning=ExperimentalWarning scripts/redefinir-senha-dono.js`. Ele mostra uma senha temporária |
 | Restaurar backup | Pare o servidor, copie `dados/backups/stylos-AAAA-MM-DD.sqlite` por cima de `dados/stylos.sqlite` e ligue de novo |

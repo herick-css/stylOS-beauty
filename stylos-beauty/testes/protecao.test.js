@@ -40,6 +40,19 @@ function criarTailscaleFalso(porta, { funnelLigado = true } = {}) {
   return arquivo;
 }
 
+/** GET com cabeçalho Host escolhido (o fetch não deixa trocar o Host). */
+function getComHost(base, caminho, host, cabecalhos = {}) {
+  return new Promise((resolver, rejeitar) => {
+    const url = new URL(base);
+    const pedido = http.request({ hostname: url.hostname, port: url.port, path: caminho, method: 'GET', headers: { host, ...cabecalhos } }, (resposta) => {
+      resposta.resume();
+      resposta.on('end', () => resolver({ status: resposta.statusCode, local: resposta.headers.location }));
+    });
+    pedido.on('error', rejeitar);
+    pedido.end();
+  });
+}
+
 let servidor;
 let google;
 let smtp;
@@ -88,6 +101,20 @@ describe('endereço público detectado pelo Tailscale', () => {
     assert.equal((await cliDono.get('/api/sessao')).dados.urlPublica, 'https://meusalao.com.br');
     const r = await cliDono.put('/api/dono/sistema', { urlPublica: '' });
     assert.equal(r.dados.urlPublica, 'https://notebook.tail1234.ts.net');
+  });
+
+  test('migração: com domínio novo cadastrado, links antigos .ts.net redirecionam (páginas sim, API não)', async () => {
+    await cliDono.put('/api/dono/sistema', { urlPublica: 'https://agenda.salaoexemplo.com.br' });
+    const antigo = await getComHost(servidor.base, '/p/studio-ana-k3f9?x=1', 'notebook.tail1234.ts.net');
+    assert.equal(antigo.status, 302);
+    assert.equal(antigo.local, 'https://agenda.salaoexemplo.com.br/p/studio-ana-k3f9?x=1');
+    const api = await getComHost(servidor.base, '/api/sessao', 'notebook.tail1234.ts.net');
+    assert.equal(api.status, 200, 'API não redireciona');
+    const local = await getComHost(servidor.base, '/entrar', '127.0.0.1');
+    assert.equal(local.status, 200, 'acesso local não redireciona');
+    await cliDono.put('/api/dono/sistema', { urlPublica: '' });
+    const semMigracao = await getComHost(servidor.base, '/entrar', 'notebook.tail1234.ts.net');
+    assert.equal(semMigracao.status, 200, 'sem domínio novo, o .ts.net funciona normal');
   });
 
   test('com o Funnel desligado, não inventa endereço', async () => {
@@ -273,6 +300,14 @@ describe('login com Google', () => {
 
 // ------------------------------------------------------------------
 describe('recuperação de senha por e-mail', () => {
+  test('o Gmail do projeto já vem preenchido (falta só a senha de app)', async () => {
+    const config = await cliDono.get('/api/dono/email');
+    assert.equal(config.dados.configurado, false);
+    assert.equal(config.dados.usuario, 'stylosbeauty26@gmail.com');
+    assert.equal(config.dados.servidor, 'smtp.gmail.com');
+    assert.equal(config.dados.porta, 465);
+  });
+
   test('sem e-mail configurado avisa claramente', async () => {
     const r = await new Cliente(servidor.base).post('/api/recuperar-senha', { email: 'pessoa@x.com' });
     assert.equal(r.status, 503);
@@ -389,6 +424,21 @@ describe('escudo contra DDoS (servidor com limites baixos)', () => {
     assert.equal(chaveDoIp('2804:14c:1:2:aaaa::1'), chaveDoIp('2804:14c:1:2:bbbb:cccc:dddd:eeee'));
     assert.notEqual(chaveDoIp('2804:14c:1:2::1'), chaveDoIp('2804:14c:1:3::1'));
     assert.equal(chaveDoIp('::ffff:10.0.0.1'), '10.0.0.1');
+  });
+
+  test('quem vem pelo Tailscale NÃO consegue forjar o IP com CF-Connecting-IP', () => {
+    const seguranca = require('../servidor/seguranca');
+    const viaFunnel = { headers: { 'tailscale-funnel-request': '?1', 'x-forwarded-for': '203.0.113.5', 'cf-connecting-ip': '9.9.9.9' }, socket: { remoteAddress: '127.0.0.1' } };
+    assert.equal(seguranca.ipDoCliente(viaFunnel), '203.0.113.5');
+    const viaCloudflare = { headers: { 'cf-connecting-ip': '198.51.100.20', 'x-forwarded-for': '1.2.3.4' }, socket: { remoteAddress: '127.0.0.1' } };
+    assert.equal(seguranca.ipDoCliente(viaCloudflare), '198.51.100.20');
+  });
+
+  test('ataque real: trocar CF-Connecting-IP a cada pedido pelo Funnel não escapa do limite', async () => {
+    const respostas = await Promise.all(Array.from({ length: 30 }, (_, i) => fetch(`${servidorApertado.base}/api/sessao`, {
+      headers: { 'tailscale-funnel-request': '?1', 'x-forwarded-for': '203.0.113.66', 'cf-connecting-ip': `10.9.${i}.${i}` },
+    })));
+    assert.ok(respostas.filter((r) => r.status === 429).length >= 15);
   });
 
   test('cabeçalho X-Forwarded-For com vários IPs: vale o último (o que o túnel colocou)', () => {

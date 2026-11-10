@@ -126,6 +126,31 @@ const MIGRACOES = [
   );
   CREATE INDEX idx_redefinicoes_usuario ON redefinicoes_senha(usuario_id);
   `,
+
+  // ---------- versão 3: vídeos enviados pelos ADMs ----------
+  `
+  CREATE TABLE videos (
+    id                TEXT PRIMARY KEY,          -- 32 letras/números aleatórios (nome da pasta)
+    dono_id           INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    nome_original     TEXT,
+    status            TEXT NOT NULL CHECK (status IN ('enviando', 'na_fila', 'processando', 'pronto', 'erro')),
+    mensagem          TEXT,                       -- motivo do erro, se houver
+    progresso         INTEGER NOT NULL DEFAULT 0, -- 0 a 100 durante a otimização
+    tamanho_esperado  INTEGER NOT NULL,
+    tamanho_recebido  INTEGER NOT NULL DEFAULT 0,
+    tamanho_original  INTEGER,
+    tamanho_final     INTEGER,                    -- versão para computador
+    tamanho_movel     INTEGER,                    -- versão para celular
+    duracao           REAL,
+    largura           INTEGER,
+    altura            INTEGER,
+    tem_audio         INTEGER NOT NULL DEFAULT 0,
+    criado_em         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    atualizado_em     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+  CREATE INDEX idx_videos_dono ON videos(dono_id);
+  CREATE INDEX idx_videos_status ON videos(status);
+  `,
 ];
 
 let bancoAberto = null;

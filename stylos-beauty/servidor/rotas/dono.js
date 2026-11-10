@@ -155,6 +155,7 @@ function registrar(roteador) {
       urlPublica: urlPublicaAtual(),
       urlPublicaManual: require('../banco').lerConfiguracaoGlobal('url_publica') || '',
       tailscale: require('../servicos/tailscale').situacao(),
+      videos: require('../servicos/video').situacaoFerramentas(),
       totais: {
         adms: contar("SELECT COUNT(*) AS total FROM usuarios WHERE papel = 'adm'"),
         clientes: contar("SELECT COUNT(*) AS total FROM usuarios WHERE papel = 'usuario'"),

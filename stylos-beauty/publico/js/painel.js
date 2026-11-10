@@ -983,11 +983,33 @@
     ], { id: 'cartao-tailscale' });
   }
 
+  /** Cartão do FFmpeg (otimização de vídeos). */
+  function cartaoVideos(situacao) {
+    return cartao('Vídeos (otimização)', 'filme', [
+      el('p', {}, [el('span', { classe: `indicador ${situacao.disponivel ? '' : 'indicador--alerta'}`, texto: situacao.disponivel ? 'Pronto' : 'Indisponível' }), ` — ${situacao.mensagem}`]),
+      situacao.disponivel
+        ? el('p', { classe: 'texto-suave texto-pequeno', texto: 'Os ADMs podem enviar vídeos (cabeçalho, galeria, destaque, serviços e seção Vídeo). O sistema reduz o tamanho sem perda visível de qualidade e gera uma versão leve para celular.' })
+        : el('ol', { classe: 'passos-guia' }, [
+            el('li', { texto: 'Rode o INSTALAR-WINDOWS.bat e aceite instalar o FFmpeg (ou, num terminal: winget install Gyan.FFmpeg).' }),
+            el('li', { texto: 'Feche e abra de novo o INICIAR-STYLOS.bat.' }),
+            el('li', { texto: 'Clique em "Verificar de novo".' }),
+          ]),
+      el('button', {
+        classe: 'botao botao--secundario botao--pequeno', type: 'button',
+        aoClick: async (evento) => {
+          evento.currentTarget.classList.add('carregando');
+          await api('/api/dono/videos/verificar', { corpo: {} }).catch(() => {});
+          navegar();
+        },
+      }, [icone('link', 16), 'Verificar de novo']),
+    ], { id: 'cartao-videos' });
+  }
+
   /** Cartão do e-mail (recuperação de senha). */
   function cartaoEmail(config) {
     const servidor = campo({ id: 'smtp-servidor', rotulo: 'Servidor', valor: config.servidor });
     const porta = campo({ id: 'smtp-porta', rotulo: 'Porta', tipo: 'number', valor: String(config.porta) });
-    const usuario = campo({ id: 'smtp-usuario', rotulo: 'Gmail que envia', tipo: 'email', valor: config.usuario, atributos: { placeholder: 'stylos.salao@gmail.com' } });
+    const usuario = campo({ id: 'smtp-usuario', rotulo: 'Gmail que envia', tipo: 'email', valor: config.usuario, atributos: { placeholder: 'stylosbeauty26@gmail.com' } });
     const senha = campo({ id: 'smtp-senha', rotulo: 'Senha de app (16 letras)', tipo: 'password', dica: config.configurado ? 'Já existe uma salva. Preencha só para trocar.' : 'NÃO é a senha normal do Gmail.', atributos: { autocomplete: 'off' } });
     const remetente = campo({ id: 'smtp-nome', rotulo: 'Nome do remetente', valor: config.nomeRemetente });
     const areaMensagem = el('div', { 'aria-live': 'polite' });
@@ -998,7 +1020,7 @@
       el('details', {}, [
         el('summary', { classe: 'campo__rotulo', texto: 'Como pegar a senha de app do Gmail' }),
         el('ol', { classe: 'passos-guia' }, [
-          el('li', { texto: 'Crie (ou use) um Gmail só para o sistema, ex.: stylos.salao@gmail.com.' }),
+          el('li', { texto: 'Entre no Gmail do sistema (stylosbeauty26@gmail.com).' }),
           el('li', { texto: 'Em myaccount.google.com → Segurança, ative a "Verificação em duas etapas".' }),
           el('li', { texto: 'Procure por "Senhas de app", crie uma chamada "StylOS" e copie as 16 letras.' }),
           el('li', { texto: 'Cole abaixo e clique em "Salvar" e depois em "Enviar teste".' }),
@@ -1087,7 +1109,7 @@
       cabecalhoTela('Sistema e segurança', `${sistema.totais.adms} ADM(s) · ${sistema.totais.clientes} cliente(s) · ${sistema.totais.paginasPublicadas} página(s) no ar · ${sistema.totais.agendamentos} agendamento(s)`),
       el('div', { classe: 'grade-2' }, [cartaoTailscale(sistema), cartaoEscudo(escudo)]),
       el('p'),
-      cartaoEmail(configEmail),
+      el('div', { classe: 'grade-2' }, [cartaoVideos(sistema.videos), cartaoEmail(configEmail)]),
       el('p'),
       el('div', { classe: 'grade-2' }, [
         cartao('Endereço público manual', 'link', [

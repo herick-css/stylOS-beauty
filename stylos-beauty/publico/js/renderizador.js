@@ -76,8 +76,89 @@
     });
   }
 
-  /** Foto ou, se não houver, um fundo decorativo (na prévia avisa para adicionar). */
+  // ================================================================
+  // VÍDEOS (enviados e otimizados pelo sistema)
+  // ================================================================
+
+  /** Economia de dados ligada no celular, ou pessoa que prefere menos movimento? Não toca sozinho. */
+  function evitarReproducaoAutomatica() {
+    const conexao = raiz.navigator && raiz.navigator.connection;
+    return reduzirMovimento() || Boolean(conexao && conexao.saveData);
+  }
+
+  /** <source> do celular (720p) e do computador (1080p): o navegador escolhe pelo tamanho da tela. */
+  function fontesDoVideo(enderecos) {
+    return [
+      el('source', { src: enderecos.celular, type: 'video/mp4', media: '(max-width: 900px)' }),
+      el('source', { src: enderecos.computador, type: 'video/mp4' }),
+    ];
+  }
+
+  /**
+   * Vídeo DECORATIVO (fundo do cabeçalho, destaque, serviços...): sem som, em loop,
+   * só toca quando aparece na tela e tem botão de pausar (acessibilidade).
+   */
+  function videoDecorativo(enderecos, classe, contexto) {
+    const video = el('video', {
+      classe: 'midia-video__video', muted: true, loop: true, playsinline: true, preload: 'metadata',
+      poster: enderecos.capa, 'aria-hidden': 'true', disablepictureinpicture: true, dados: { automatico: '1' },
+    }, fontesDoVideo(enderecos));
+    video.muted = true; // necessário para o celular permitir tocar sozinho
+    const botao = el('button', { classe: 'midia-video__pausa', type: 'button', 'aria-label': 'Pausar vídeo', title: 'Pausar vídeo' }, [icone('pausa', 16)]);
+    botao.addEventListener('click', (evento) => {
+      evento.stopPropagation();
+      if (video.paused) {
+        video.dataset.pausadoPelaPessoa = '';
+        video.play().catch(() => {});
+      } else {
+        video.dataset.pausadoPelaPessoa = '1';
+        video.pause();
+      }
+    });
+    const atualizarBotao = () => {
+      botao.replaceChildren(icone(video.paused ? 'play' : 'pausa', 16));
+      botao.setAttribute('aria-label', video.paused ? 'Tocar vídeo' : 'Pausar vídeo');
+      botao.title = botao.getAttribute('aria-label');
+    };
+    video.addEventListener('play', atualizarBotao);
+    video.addEventListener('pause', atualizarBotao);
+    if (evitarReproducaoAutomatica()) video.dataset.pausadoPelaPessoa = '1';
+    return el('div', { classe: `midia midia-video ${classe || ''}` }, [video, botao]);
+  }
+
+  /** Mostrado na prévia enquanto o vídeo ainda está sendo otimizado. */
+  function videoProcessando(classe) {
+    return el('div', { classe: `midia midia--vazia midia--processando ${classe || ''}` }, [
+      el('span', { classe: 'giratorio', 'aria-hidden': 'true' }),
+      el('span', { texto: 'Otimizando vídeo… aparece aqui quando terminar' }),
+    ]);
+  }
+
+  /** Toca os vídeos decorativos só enquanto estão visíveis (poupa internet e bateria). */
+  function ativarVideosAutomaticos(alvo) {
+    const videos = alvo.querySelectorAll('video[data-automatico]');
+    if (!videos.length) return;
+    if (!('IntersectionObserver' in raiz)) {
+      videos.forEach((video) => { if (!video.dataset.pausadoPelaPessoa) video.play().catch(() => {}); });
+      return;
+    }
+    const observador = new IntersectionObserver((entradas) => {
+      for (const entrada of entradas) {
+        const video = entrada.target;
+        if (entrada.isIntersecting && !video.dataset.pausadoPelaPessoa) video.play().catch(() => {});
+        else if (!entrada.isIntersecting) video.pause();
+      }
+    }, { threshold: 0.15 });
+    videos.forEach((video) => observador.observe(video));
+  }
+
+  /** Foto, vídeo ou, se não houver nada, um fundo decorativo (na prévia avisa para adicionar). */
   function midia(url, textoAlternativo, classe, contexto) {
+    const enderecosVideo = Esquemas.enderecosDoVideo(url);
+    if (enderecosVideo) {
+      if (contexto.videosPendentes && contexto.videosPendentes.includes(enderecosVideo.id)) return videoProcessando(classe);
+      return videoDecorativo(enderecosVideo, classe, contexto);
+    }
     if (url) {
       return el('img', { classe: `midia ${classe || ''}`, src: url, alt: textoAlternativo || '', loading: 'lazy', decoding: 'async' });
     }
@@ -238,8 +319,19 @@
   desenhar.video = (secao, contexto) => {
     const dados = secao.dados;
     const video = Esquemas.extrairVideo(dados.video);
+    const proprio = Esquemas.enderecosDoVideo(dados.arquivo);
     const moldura = el('div', { classe: 'video__moldura' });
-    if (video) {
+    if (proprio) {
+      // Vídeo enviado: fica no próprio site, com som e controles; baixa só quando a pessoa der play
+      if (contexto.videosPendentes && contexto.videosPendentes.includes(proprio.id)) {
+        moldura.append(videoProcessando('video__fachada'));
+      } else {
+        moldura.append(el('video', {
+          classe: 'video__proprio', controls: true, playsinline: true, preload: 'none', poster: proprio.capa,
+          'aria-label': dados.titulo,
+        }, fontesDoVideo(proprio)));
+      }
+    } else if (video) {
       // "Fachada": o player só carrega quando a pessoa clica (mais rápido e mais privado)
       const botao = el('button', {
         classe: 'video__fachada', type: 'button', 'aria-label': `Assistir ao vídeo: ${dados.titulo}`,
@@ -286,10 +378,20 @@
     const fotos = dados.imagens;
     const grade = el('div', { classe: `grade-galeria quantidade--${Math.min(fotos.length, 6)}` });
     fotos.forEach((foto, indice) => {
+      // Vídeo na galeria: mostra a capa com um "play"; ao tocar, abre e toca na tela cheia.
+      // Enquanto o vídeo ainda está sendo otimizado (só na prévia), mostra o aviso sem o "play".
+      const video = Esquemas.enderecosDoVideo(foto.imagem);
+      const videoPronto = video && !(contexto.videosPendentes || []).includes(video.id);
       grade.append(el('button', {
-        classe: 'galeria__item', type: 'button', 'aria-label': `Ampliar foto ${indice + 1}${foto.legenda ? ': ' + foto.legenda : ''}`,
-        aoClick: () => { if (contexto.modo !== 'previa' && foto.imagem) abrirLuz(fotos, indice); },
-      }, [midia(foto.imagem, foto.legenda, '', contexto), foto.legenda ? el('span', { classe: 'galeria__legenda', texto: foto.legenda }) : null]));
+        classe: 'galeria__item', type: 'button', 'aria-label': `${video ? 'Assistir ao vídeo' : 'Ampliar foto'} ${indice + 1}${foto.legenda ? ': ' + foto.legenda : ''}`,
+        aoClick: () => { if (contexto.modo !== 'previa' && foto.imagem) abrirLuz(fotos.filter((item) => item.imagem), fotos.filter((item) => item.imagem).indexOf(foto)); },
+      }, [
+        videoPronto
+          ? el('img', { classe: 'midia', src: video.capa, alt: foto.legenda || '', loading: 'lazy', decoding: 'async' })
+          : midia(foto.imagem, foto.legenda, '', contexto),
+        videoPronto ? el('span', { classe: 'galeria__selo-video', 'aria-hidden': 'true' }, [icone('play', 22)]) : null,
+        foto.legenda ? el('span', { classe: 'galeria__legenda', texto: foto.legenda }) : null,
+      ]));
     });
     return el('section', { classe: 'secao secao--galeria' }, [
       el('div', { classe: 'conteudo' }, [cabecalhoDeSecao({ titulo: dados.titulo, texto: dados.texto }), grade]),
@@ -299,13 +401,22 @@
   /** Caixa de luz (foto ampliada) da galeria, com setas e tecla Esc. */
   function abrirLuz(fotos, indiceInicial) {
     let indice = indiceInicial;
-    const imagem = el('img', { classe: 'luz__imagem', alt: '' });
+    const area = el('div', { classe: 'luz__area' });
     const legenda = el('p', { classe: 'luz__legenda' });
-    const caixa = el('dialog', { classe: 'luz', 'aria-label': 'Foto ampliada' });
+    const caixa = el('dialog', { classe: 'luz', 'aria-label': 'Foto ou vídeo ampliado' });
     const mostrar = () => {
       const foto = fotos[indice];
-      imagem.src = foto.imagem;
-      imagem.alt = foto.legenda || `Foto ${indice + 1}`;
+      const enderecos = Esquemas.enderecosDoVideo(foto.imagem);
+      area.querySelectorAll('video').forEach((video) => video.pause());
+      if (enderecos) {
+        // Vídeo da galeria: com som e controles; começa a tocar ao abrir
+        area.replaceChildren(el('video', {
+          classe: 'luz__imagem', controls: true, autoplay: true, playsinline: true, preload: 'auto', poster: enderecos.capa,
+          'aria-label': foto.legenda || `Vídeo ${indice + 1}`,
+        }, fontesDoVideo(enderecos)));
+      } else {
+        area.replaceChildren(el('img', { classe: 'luz__imagem', src: foto.imagem, alt: foto.legenda || `Foto ${indice + 1}` }));
+      }
       legenda.textContent = `${foto.legenda || ''}  ${indice + 1}/${fotos.length}`.trim();
     };
     const mover = (passo) => {
@@ -315,7 +426,7 @@
     caixa.append(
       el('button', { classe: 'luz__fechar', type: 'button', 'aria-label': 'Fechar', aoClick: () => caixa.close() }, [icone('fechar', 26)]),
       fotos.length > 1 ? el('button', { classe: 'luz__seta luz__seta--esq', type: 'button', 'aria-label': 'Foto anterior', aoClick: () => mover(-1) }, [icone('setaEsquerda', 26)]) : null,
-      el('figure', { classe: 'luz__figura' }, [imagem, legenda]),
+      el('figure', { classe: 'luz__figura' }, [area, legenda]),
       fotos.length > 1 ? el('button', { classe: 'luz__seta luz__seta--dir', type: 'button', 'aria-label': 'Próxima foto', aoClick: () => mover(1) }, [icone('seta', 26)]) : null,
     );
     caixa.addEventListener('keydown', (evento) => {
@@ -323,7 +434,10 @@
       if (evento.key === 'ArrowRight') mover(1);
     });
     caixa.addEventListener('click', (evento) => { if (evento.target === caixa) caixa.close(); });
-    caixa.addEventListener('close', () => caixa.remove());
+    caixa.addEventListener('close', () => {
+      caixa.querySelectorAll('video').forEach((video) => video.pause());
+      caixa.remove();
+    });
     document.body.append(caixa);
     mostrar();
     caixa.showModal();
@@ -444,6 +558,7 @@
       slug: opcoes.slug,
       agenda: opcoes.agenda || { ativa: false, servicos: [] },
       usuario: opcoes.usuario || null,
+      videosPendentes: opcoes.videosPendentes || [],
       idAgendamento: secaoAgendamento ? secaoAgendamento.id : null,
       // O botão do cabeçalho leva ao agendamento; se não houver, à próxima seção.
       idAlvoBotao: secaoAgendamento ? secaoAgendamento.id : (conteudo.secoes[indiceCabecalho + 1] || conteudo.secoes[0] || {}).id,
@@ -477,6 +592,7 @@
       principal,
     );
     ativarNavegacaoRolada(alvo);
+    ativarVideosAutomaticos(alvo);
     if (modo === 'publico') ativarRevelacao(alvo);
     return contexto;
   }

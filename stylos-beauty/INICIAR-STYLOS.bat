@@ -18,14 +18,16 @@ if %errorlevel% neq 0 (
 REM Liga o tunel configurado no arquivo .env (TUNEL=tailscale ou TUNEL=cloudflare)
 set TUNEL=
 set CLOUDFLARE_TOKEN=
+set PORTA=3000
 if exist .env (
   for /f "usebackq tokens=1,* delims==" %%a in (".env") do (
     if /i "%%a"=="TUNEL" set TUNEL=%%b
     if /i "%%a"=="CLOUDFLARE_TOKEN" set CLOUDFLARE_TOKEN=%%b
+    if /i "%%a"=="PORTA" set PORTA=%%b
   )
 )
 if /i "%TUNEL%"=="tailscale" (
-  "C:\Program Files\Tailscale\tailscale.exe" funnel --bg 3000 >nul 2>nul
+  "C:\Program Files\Tailscale\tailscale.exe" funnel --bg %PORTA% >nul 2>nul
   echo Tunel Tailscale ativo:
   "C:\Program Files\Tailscale\tailscale.exe" funnel status
 )

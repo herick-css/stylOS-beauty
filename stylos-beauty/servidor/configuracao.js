@@ -102,6 +102,16 @@ const configuracao = {
   limiteUploadImagem: 5 * 1024 * 1024, // 5 MB por foto (o navegador já reduz antes)
   limiteArquivosPorAdm: 300,
 
+  // Vídeos (otimizados pelo FFmpeg no próprio computador)
+  ffmpegCaminho: ler('FFMPEG_CAMINHO', ''),      // vazio = procura sozinho
+  ffprobeCaminho: ler('FFPROBE_CAMINHO', ''),
+  videoTamanhoMaximoMb: Number(ler('VIDEO_TAMANHO_MAXIMO_MB', '500')),
+  videoDuracaoMaximaSeg: Number(ler('VIDEO_DURACAO_MAXIMA_SEG', '600')),
+  videoMaximoPorAdm: Number(ler('VIDEO_MAXIMO_POR_ADM', '40')),
+  videoPreset: ler('VIDEO_PRESET', 'medium'),    // ultrafast...veryslow: mais lento = arquivo menor, mesma qualidade
+  videoCrf: Number(ler('VIDEO_CRF', '21')),      // qualidade: 18 (quase igual ao original) a 28 (mais leve)
+  videoTamanhoPedaco: 4 * 1024 * 1024,           // envio em pedaços de 4 MB
+
   // Sessões
   duracaoSessaoMs: 7 * 24 * 60 * 60 * 1000, // 7 dias sem uso = sai sozinho
   modoTeste: ler('STYLOS_MODO_TESTE', '0') === '1',

@@ -75,6 +75,7 @@
         modo: 'previa',
         agenda: ultimasOpcoes.agenda,
         secaoSelecionada: ultimasOpcoes.secaoSelecionada,
+        videosPendentes: ultimasOpcoes.videosPendentes,
         aoSelecionarSecao: (secaoId) => avisarEditor({ tipo: 'selecionar', secaoId }),
       });
       if (manterRolagem) window.scrollTo(0, rolagem);
@@ -89,7 +90,7 @@
         avisarEditor({ tipo: 'pronto' });
       } else if (mensagem.tipo === 'renderizar') {
         ultimoConteudo = mensagem.conteudo;
-        ultimasOpcoes = { agenda: mensagem.agenda, secaoSelecionada: mensagem.secaoSelecionada };
+        ultimasOpcoes = { agenda: mensagem.agenda, secaoSelecionada: mensagem.secaoSelecionada, videosPendentes: mensagem.videosPendentes || [] };
         desenhar(true);
       } else if (mensagem.tipo === 'selecionar' && ultimoConteudo) {
         ultimasOpcoes.secaoSelecionada = mensagem.secaoId;

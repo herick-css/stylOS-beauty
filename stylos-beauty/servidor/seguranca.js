@@ -186,13 +186,24 @@ function limparSessoesExpiradas() {
  */
 function ipDoCliente(requisicao) {
   if (configuracao.confiarProxy) {
+    const ultimoDaLista = (texto) => {
+      const lista = String(texto || '').split(',').map((parte) => parte.trim()).filter(Boolean);
+      return lista.length ? lista[lista.length - 1].slice(0, 64) : '';
+    };
+    // 1) Veio pelo Tailscale Funnel? O Tailscale APAGA e recoloca este cabeçalho em
+    //    todo pedido do Funnel, então o visitante não consegue removê-lo nem forjá-lo.
+    //    Nesse caso vale o X-Forwarded-For que o Tailscale escreveu — e IGNORAMOS um
+    //    CF-Connecting-IP, que um atacante poderia mandar falso para fugir do escudo.
+    if (requisicao.headers['tailscale-funnel-request']) {
+      const ip = ultimoDaLista(requisicao.headers['x-forwarded-for']);
+      if (ip) return ip;
+    }
+    // 2) Veio pela Cloudflare (cloudflared)? A Cloudflare sobrescreve este cabeçalho.
     const cloudflare = requisicao.headers['cf-connecting-ip'];
     if (cloudflare) return String(cloudflare).trim().slice(0, 64);
-    const encaminhado = requisicao.headers['x-forwarded-for'];
-    if (encaminhado) {
-      const lista = String(encaminhado).split(',').map((parte) => parte.trim()).filter(Boolean);
-      if (lista.length) return lista[lista.length - 1].slice(0, 64);
-    }
+    // 3) Outro túnel/proxy local: o último endereço é o que o proxy acrescentou.
+    const encaminhado = ultimoDaLista(requisicao.headers['x-forwarded-for']);
+    if (encaminhado) return encaminhado;
   }
   return requisicao.socket.remoteAddress || 'desconhecido';
 }

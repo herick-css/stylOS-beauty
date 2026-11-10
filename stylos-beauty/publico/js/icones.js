@@ -37,6 +37,8 @@
     tiktok: ['M14 3v11.5a3.5 3.5 0 11-3.5-3.5', 'M14 3c.5 2.8 2.3 4.5 5 4.8'],
     estrela: ['M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z'],
     play: ['M8 5v14l11-7L8 5z'],
+    pausa: ['M7 5h3v14H7z', 'M14 5h3v14h-3z'],
+    filme: ['M4 5h16v14H4z', 'M4 9h16', 'M4 15h16', 'M8 5v4', 'M12 5v4', 'M16 5v4', 'M8 15v4', 'M12 15v4', 'M16 15v4'],
     local: ['M12 21s-7-6.2-7-11.5a7 7 0 0114 0C19 14.8 12 21 12 21z', 'M12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z'],
     relogio: ['M12 21a9 9 0 100-18 9 9 0 000 18z', 'M12 7v5l3 2'],
     telefone: ['M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z'],
@@ -66,7 +68,7 @@
   };
 
   // Ícones que ficam melhores preenchidos
-  const PREENCHIDOS = new Set(['estrela', 'play']);
+  const PREENCHIDOS = new Set(['estrela', 'play', 'pausa']);
 
   function criar(nome, tamanho, classeExtra) {
     const ns = 'http://www.w3.org/2000/svg';

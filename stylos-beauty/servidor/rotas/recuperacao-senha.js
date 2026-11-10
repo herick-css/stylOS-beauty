@@ -21,6 +21,8 @@ const { exigirAntiRobo } = require('./protecao');
 const { ErroHttp, lerCorpoJson, textoLimpo, emailValido } = require('../utilitarios');
 
 const VALIDADE_MS = 30 * 60 * 1000;
+// Gmail criado para o projeto (já vem preenchido no painel; falta só a senha de app)
+const EMAIL_PADRAO = 'stylosbeauty26@gmail.com';
 const hash = (texto) => crypto.createHash('sha256').update(texto).digest('hex');
 
 /**
@@ -122,7 +124,7 @@ function registrar(roteador) {
     const config = email.lerConfigEmail();
     return config
       ? { configurado: true, servidor: config.servidor, porta: config.porta, usuario: config.usuario, nomeRemetente: config.nomeRemetente }
-      : { configurado: false, servidor: 'smtp.gmail.com', porta: 465, usuario: '', nomeRemetente: 'StylOS Beauty' };
+      : { configurado: false, servidor: 'smtp.gmail.com', porta: 465, usuario: EMAIL_PADRAO, nomeRemetente: 'StylOS Beauty' };
   }, { papeis: ['dono'] });
 
   roteador.put('/api/dono/email', async (contexto) => {

@@ -123,6 +123,8 @@ function registrar(roteador) {
         erros.push({ secaoId: null, campo: null, mensagem: 'Cadastre seu número de WhatsApp em "Agenda e WhatsApp" antes de publicar uma página com agendamento.', acao: 'agenda' });
       }
     }
+    // Vídeos: precisam estar prontos (já otimizados) e ser do próprio ADM
+    erros.push(...require('./videos').errosDeVideosNaPagina(conteudo, contexto.usuario.id));
     if (erros.length) {
       throw new ErroHttp(422, 'A página ainda não segue as boas práticas.', { erros, avisos });
     }

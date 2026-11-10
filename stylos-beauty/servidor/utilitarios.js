@@ -90,6 +90,7 @@ const TIPOS_MIME = {
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
+  '.mp4': 'video/mp4',
 };
 
 /**
@@ -124,6 +125,33 @@ function servirArquivo(requisicao, resposta, pastaBase, caminhoRelativo, tipoSeg
     resposta.end();
     return true;
   }
+  cabecalhos['Accept-Ranges'] = 'bytes';
+
+  // "Range": o navegador pede só um trecho (obrigatório para vídeo no iPhone e
+  // para pular para o meio do vídeo). Aceitamos um trecho por pedido.
+  const pedidoTrecho = /^bytes=(\d*)-(\d*)$/.exec(String(requisicao.headers.range || ''));
+  if (pedidoTrecho && (pedidoTrecho[1] || pedidoTrecho[2])) {
+    const tamanho = estatisticas.size;
+    let inicio;
+    let fim;
+    if (pedidoTrecho[1] === '') { // "bytes=-500": os últimos 500
+      inicio = Math.max(0, tamanho - Number(pedidoTrecho[2]));
+      fim = tamanho - 1;
+    } else {
+      inicio = Number(pedidoTrecho[1]);
+      fim = pedidoTrecho[2] === '' ? tamanho - 1 : Math.min(Number(pedidoTrecho[2]), tamanho - 1);
+    }
+    if (inicio > fim || inicio >= tamanho) {
+      resposta.writeHead(416, { ...cabecalhos, 'Content-Range': `bytes */${tamanho}` });
+      resposta.end();
+      return true;
+    }
+    resposta.writeHead(206, { ...cabecalhos, 'Content-Range': `bytes ${inicio}-${fim}/${tamanho}`, 'Content-Length': fim - inicio + 1 });
+    if (requisicao.method === 'HEAD') resposta.end();
+    else fs.createReadStream(caminhoFinal, { start: inicio, end: fim }).pipe(resposta);
+    return true;
+  }
+
   cabecalhos['Content-Length'] = estatisticas.size;
   resposta.writeHead(200, cabecalhos);
   if (requisicao.method === 'HEAD') {

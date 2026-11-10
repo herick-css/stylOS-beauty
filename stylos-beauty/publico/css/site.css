@@ -1140,3 +1140,70 @@ a { color: inherit; }
 .anti-robo[data-estado="erro"] .anti-robo__texto { color: #b42318; font-weight: 500; }
 .anti-robo__selo { font-size: 0.7rem; opacity: 0.65; letter-spacing: 0.02em; }
 
+
+/* ============ 9. VÍDEOS (enviados e otimizados pelo sistema) ============ */
+.midia-video { position: relative; overflow: hidden; background: #0d0b0c; }
+.midia-video__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* Botão de pausar: discreto, mas sempre alcançável (acessibilidade: movimento > 5 s precisa poder parar) */
+.midia-video__pausa {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(0, 0, 0, 0.38);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.75;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.midia-video__pausa:hover, .midia-video__pausa:focus-visible { opacity: 1; transform: scale(1.06); }
+/* Cabeçalho com vídeo de fundo: o texto não pode "tampar" o botão de pausa */
+.layout--fundo .hero { pointer-events: none; }
+.layout--fundo .hero__texto, .layout--fundo .hero__texto *,
+.layout--fundo .midia-video__pausa { pointer-events: auto; }
+.secao--cabecalho.layout--fundo .midia-video__pausa { bottom: 22px; right: clamp(20px, 5vw, 72px); }
+.cartao-servico__midia .midia-video__pausa { width: 32px; height: 32px; right: 10px; bottom: 10px; }
+
+.midia--processando { gap: 12px; text-align: center; padding: 16px; }
+
+/* Galeria: selo de "play" nos vídeos */
+.galeria__selo-video {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  padding-left: 4px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
+  color: #fff;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  pointer-events: none;
+  transition: transform 0.25s ease;
+}
+.galeria__item:hover .galeria__selo-video { transform: translate(-50%, -50%) scale(1.08); }
+.luz__area { display: grid; place-items: center; }
+.luz video.luz__imagem { background: #000; width: min(1100px, 86vw); }
+
+/* Seção Vídeo com arquivo próprio */
+.video__proprio { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; object-fit: contain; }

@@ -86,11 +86,11 @@
         { chave: 'titulo', rotulo: 'Título principal', tipo: 'texto', max: 90, obrigatorio: true },
         { chave: 'subtitulo', rotulo: 'Subtítulo', tipo: 'textoLongo', max: 220 },
         { chave: 'paragrafo', rotulo: 'Parágrafo', tipo: 'textoLongo', max: 400 },
-        { chave: 'imagem', rotulo: 'Foto principal', tipo: 'imagem', recomendado: true },
+        { chave: 'imagem', rotulo: 'Foto ou vídeo principal', tipo: 'midia', recomendado: true, dica: 'Vídeo de fundo: envie o vídeo e escolha "Foto/vídeo ocupando o fundo" em Arrumação.' },
         { chave: 'textoBotao', rotulo: 'Texto do botão (leva ao agendamento)', tipo: 'texto', max: 32 },
         {
           chave: 'layout', rotulo: 'Arrumação', tipo: 'escolha',
-          opcoes: [['dividido', 'Texto e foto lado a lado'], ['fundo', 'Foto ocupando o fundo'], ['centralizado', 'Tudo centralizado']],
+          opcoes: [['dividido', 'Texto e foto/vídeo lado a lado'], ['fundo', 'Foto/vídeo ocupando o fundo'], ['centralizado', 'Tudo centralizado (sem foto)']],
         },
       ],
       padrao: {
@@ -112,7 +112,7 @@
         { chave: 'sobretitulo', rotulo: 'Texto pequeno acima do título', tipo: 'texto', max: 40 },
         { chave: 'titulo', rotulo: 'Título', tipo: 'texto', max: 90, obrigatorio: true },
         { chave: 'paragrafo', rotulo: 'Texto', tipo: 'textoLongo', max: 600 },
-        { chave: 'imagem', rotulo: 'Foto (opcional)', tipo: 'imagem' },
+        { chave: 'imagem', rotulo: 'Foto ou vídeo (opcional)', tipo: 'midia' },
         {
           chave: 'numeros', rotulo: 'Números de destaque', tipo: 'lista', max: 4, rotuloItem: 'Número',
           campos: [
@@ -137,11 +137,11 @@
     destaque: {
       nome: 'Destaque com foto',
       icone: 'destaque',
-      descricao: 'Uma foto grande com um cartão de texto por cima. Ótimo para promover um serviço.',
+      descricao: 'Uma foto ou vídeo grande com um cartão de texto por cima. Ótimo para promover um serviço.',
       campos: [
         { chave: 'titulo', rotulo: 'Título', tipo: 'texto', max: 80, obrigatorio: true },
         { chave: 'texto', rotulo: 'Texto', tipo: 'textoLongo', max: 400 },
-        { chave: 'imagem', rotulo: 'Foto', tipo: 'imagem', obrigatorio: true },
+        { chave: 'imagem', rotulo: 'Foto ou vídeo', tipo: 'midia', obrigatorio: true },
         { chave: 'textoBotao', rotulo: 'Texto do botão (opcional, leva ao agendamento)', tipo: 'texto', max: 32 },
         { chave: 'lado', rotulo: 'Lado do cartão', tipo: 'escolha', opcoes: [['direita', 'Direita'], ['esquerda', 'Esquerda']] },
         ...CAMPOS_MENU_E_FUNDO,
@@ -168,7 +168,7 @@
         {
           chave: 'itens', rotulo: 'Serviços', tipo: 'lista', min: 1, max: 6, rotuloItem: 'Serviço',
           campos: [
-            { chave: 'imagem', rotulo: 'Foto', tipo: 'imagem' },
+            { chave: 'imagem', rotulo: 'Foto ou vídeo', tipo: 'midia' },
             { chave: 'nome', rotulo: 'Nome do serviço', tipo: 'texto', max: 50, obrigatorio: true },
             { chave: 'descricao', rotulo: 'Descrição', tipo: 'textoLongo', max: 220 },
             { chave: 'preco', rotulo: 'Preço (opcional)', tipo: 'texto', max: 24, dica: 'Ex.: a partir de R$ 40' },
@@ -193,16 +193,18 @@
     video: {
       nome: 'Vídeo',
       icone: 'video',
-      descricao: 'Um vídeo do YouTube ou Vimeo (ex.: bastidores, antes e depois).',
+      descricao: 'Um vídeo seu (enviado e otimizado aqui) ou do YouTube/Vimeo — bastidores, antes e depois...',
       campos: [
         { chave: 'titulo', rotulo: 'Título', tipo: 'texto', max: 80, obrigatorio: true },
         { chave: 'texto', rotulo: 'Texto', tipo: 'textoLongo', max: 300 },
-        { chave: 'video', rotulo: 'Link do vídeo (YouTube ou Vimeo)', tipo: 'video', obrigatorio: true, dica: 'Cole o link copiado do YouTube.' },
+        { chave: 'arquivo', rotulo: 'Envie um vídeo seu', tipo: 'midia', aceita: 'video', dica: 'Fica no próprio site, com som e controles. Ou use um link abaixo.' },
+        { chave: 'video', rotulo: 'Ou cole um link do YouTube/Vimeo', tipo: 'video', dica: 'Use um OU outro. Se os dois estiverem preenchidos, vale o vídeo enviado.' },
         ...CAMPOS_MENU_E_FUNDO,
       ],
       padrao: {
         titulo: 'Por dentro do salão',
         texto: 'Veja como cuidamos de cada cliente.',
+        arquivo: '',
         video: '',
         mostrarNoMenu: false,
         rotuloMenu: 'Vídeo',
@@ -241,14 +243,14 @@
     galeria: {
       nome: 'Galeria',
       icone: 'galeria',
-      descricao: 'Fotos dos trabalhos em grade.',
+      descricao: 'Fotos e vídeos dos trabalhos em grade (ampliam ao tocar).',
       campos: [
         { chave: 'titulo', rotulo: 'Título', tipo: 'texto', max: 80, obrigatorio: true },
         { chave: 'texto', rotulo: 'Texto', tipo: 'textoLongo', max: 200 },
         {
-          chave: 'imagens', rotulo: 'Fotos', tipo: 'lista', min: 1, max: 12, rotuloItem: 'Foto',
+          chave: 'imagens', rotulo: 'Fotos e vídeos', tipo: 'lista', min: 1, max: 12, rotuloItem: 'Item',
           campos: [
-            { chave: 'imagem', rotulo: 'Foto', tipo: 'imagem', obrigatorio: true },
+            { chave: 'imagem', rotulo: 'Foto ou vídeo', tipo: 'midia', obrigatorio: true },
             { chave: 'legenda', rotulo: 'Legenda (também ajuda quem usa leitor de tela)', tipo: 'texto', max: 80 },
           ],
         },
@@ -323,6 +325,16 @@
 
   // Formatos aceitos para imagens: fotos enviadas (/arquivos/...) ou ilustrações de exemplo.
   const PADRAO_IMAGEM = /^\/(arquivos\/[a-f0-9]{32}\.(webp|jpg|png)|img\/exemplo\/[a-z0-9-]{1,40}\.svg)$/;
+  // Vídeo enviado e otimizado pelo sistema: /arquivos/videos/<id> (a página escolhe 1080p ou 720p)
+  const PADRAO_VIDEO = /^\/arquivos\/videos\/([a-f0-9]{32})$/;
+
+  /** Se o valor for um vídeo enviado, devolve os endereços das versões; senão null. */
+  function enderecosDoVideo(valor) {
+    const resultado = PADRAO_VIDEO.exec(String(valor || ''));
+    if (!resultado) return null;
+    const base = `/arquivos/videos/${resultado[1]}`;
+    return { id: resultado[1], computador: `${base}/1080.mp4`, celular: `${base}/720.mp4`, capa: `${base}/poster.jpg` };
+  }
 
   // ================================================================
   // FUNÇÕES AUXILIARES
@@ -373,6 +385,10 @@
         return limparTexto(valor ?? padrao ?? '', campo.max, true);
       case 'imagem':
         return typeof valor === 'string' && PADRAO_IMAGEM.test(valor) ? valor : '';
+      case 'midia': // foto OU vídeo (campo.aceita: 'video' = só vídeo)
+        if (typeof valor !== 'string') return '';
+        if (PADRAO_VIDEO.test(valor)) return valor;
+        return campo.aceita !== 'video' && PADRAO_IMAGEM.test(valor) ? valor : '';
       case 'url': {
         const texto = typeof valor === 'string' ? valor.trim().slice(0, 300) : '';
         if (!texto) return '';
@@ -483,7 +499,7 @@
           erros.push({ secaoId: secao.id, campo: campo.chave, mensagem: `${modelo.nome}: preencha "${campo.rotulo}".` });
         }
         if (campo.recomendado && campoVazio(campo, valor)) {
-          avisos.push({ secaoId: secao.id, campo: campo.chave, mensagem: `${modelo.nome}: uma foto deixa a página bem mais bonita.` });
+          avisos.push({ secaoId: secao.id, campo: campo.chave, mensagem: `${modelo.nome}: uma foto ou vídeo deixa a página bem mais bonita.` });
         }
         if (campo.tipo === 'lista') {
           if (campo.min && valor.length < campo.min) {
@@ -500,6 +516,9 @@
             }
           });
         }
+      }
+      if (secao.tipo === 'video' && !secao.dados.arquivo && !secao.dados.video) {
+        erros.push({ secaoId: secao.id, campo: 'arquivo', mensagem: 'Vídeo: envie um vídeo ou cole um link do YouTube/Vimeo.' });
       }
       if (secao.dados.mostrarNoMenu && !String(secao.dados.rotuloMenu || '').trim()) {
         erros.push({ secaoId: secao.id, campo: 'rotuloMenu', mensagem: `${modelo.nome}: dê um nome para o link do menu.` });
@@ -636,6 +655,8 @@
     ORDEM_GALERIA,
     MAXIMO_SECOES,
     PADRAO_IMAGEM,
+    PADRAO_VIDEO,
+    enderecosDoVideo,
     novoIdSecao,
     extrairVideo,
     normalizarConteudo,
